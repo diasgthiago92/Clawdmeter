@@ -549,7 +549,7 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_add_event_cb(usage_container, global_click_cb, LV_EVENT_CLICKED, NULL);
 
     lbl_title = lv_label_create(usage_container);
-    lv_label_set_text(lbl_title, "Uso");
+    lv_label_set_text(lbl_title, "Consumo");
     lv_obj_set_style_text_font(lbl_title, L.title_font, 0);
     lv_obj_set_style_text_color(lbl_title, COL_TEXT, 0);
     // The nudge balances the corner logo on the left; smaller on small
@@ -567,7 +567,7 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_clear_flag(usage_group, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(usage_group, LV_OBJ_FLAG_EVENT_BUBBLE);
 
-    // Large layout: Claude Daily, Claude Weekly, Kiro Monthly and Antigravity Daily
+    // Large layout: Claude Daily, Antigravity, Kiro Monthly and Claude Weekly
     // share a scrollable box (three visible at a time).
     lv_obj_t* panels = usage_group;
     int py0 = L.content_y;
@@ -601,7 +601,7 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_add_flag(lbl_spending_status, LV_OBJ_FLAG_HIDDEN);
 
     panel_weekly = make_usage_panel(panels,
-                     py0 + L.usage_panel_h + L.usage_panel_gap, "Claude - Weekly",
+                     py0 + 3 * (L.usage_panel_h + L.usage_panel_gap), "Claude - Weekly",
                      &lbl_weekly_pct, &lbl_weekly_label,
                      &bar_weekly, &lbl_weekly_reset);
     // Recolor enabled so enterprise period box can color pace and reset separately
@@ -613,7 +613,7 @@ static void init_usage_screen(lv_obj_t* scr) {
                          &lbl_kiro_pct, &lbl_kiro_label, &bar_kiro, &lbl_kiro_reset);
         lv_label_set_text(lbl_kiro_reset, "Sem dados do Kiro");
         panel_ag = make_usage_panel(panels,
-                         py0 + 3 * (L.usage_panel_h + L.usage_panel_gap), "Antigravity",   // "- Daily" would collide with big token counts
+                         py0 + L.usage_panel_h + L.usage_panel_gap, "Antigravity",   // "- Daily" would collide with big token counts
                          &lbl_ag_pct, &lbl_ag_label, &bar_ag, &lbl_ag_reset);
         lv_label_set_text(lbl_ag_pct, "---");
         lv_label_set_text(lbl_ag_reset, "Sem uso do Antigravity hoje");
@@ -1801,10 +1801,9 @@ void ui_update(const UsageData* data) {
         clock_base_epoch = data->clock_epoch;
         clock_base_ms = last_data_ms;
         clock_fmt = data->clock_fmt;
-    } else if (clock_base_epoch != 0) {   // clock turned off daemon-side → revert title to "Uso"
+    } else if (clock_base_epoch != 0) {   // clock turned off daemon-side
         clock_base_epoch = 0;
         clock_last_min = -1;
-        lv_label_set_text(lbl_title, "Uso");
     }
 
     int s_pct = (int)(data->session_pct + 0.5f);
@@ -1969,26 +1968,7 @@ void ui_tick_anim(void) {
 
     uint32_t now = lv_tick_get();
 
-    // Title clock: once the daemon has sent wall-clock time, replace "Uso" with
-    // the live time, advanced locally so it ticks every minute between payloads.
-    if (clock_base_epoch > 0) {
-        time_t cur = (time_t)(clock_base_epoch + (now - clock_base_ms) / 1000);
-        struct tm tmv;
-        gmtime_r(&cur, &tmv);   // epoch is already local wall-clock → gmtime keeps it as-is
-        if (tmv.tm_min != clock_last_min) {   // only rewrite the title when the minute changes
-            clock_last_min = tmv.tm_min;
-            char tbuf[12];
-            if (clock_fmt == 12) {
-                int h12 = tmv.tm_hour % 12;
-                if (h12 == 0) h12 = 12;
-                snprintf(tbuf, sizeof(tbuf), "%d:%02d %s", h12, tmv.tm_min,
-                         tmv.tm_hour < 12 ? "AM" : "PM");
-            } else {
-                snprintf(tbuf, sizeof(tbuf), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
-            }
-            lv_label_set_text(lbl_title, tbuf);
-        }
-    }
+    // The title is fixed ("Consumo"); the daemon's wall-clock time is not shown.
 
     if (now - anim_msg_start >= ANIM_MSG_MS) {
         anim_msg_idx = (anim_msg_idx + 1) % ANIM_MSG_COUNT;
