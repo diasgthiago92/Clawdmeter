@@ -39,6 +39,13 @@ lv_obj_t* splash_get_root(void);
 lv_obj_t* splash_mini_create(lv_obj_t *parent, const char *anim_name, int px);
 void splash_mini_tick(void);
 
+// Kiro ghost flying side to side (stands in for the cloud rider on the idle
+// screen during Kiro's turn). Uses the corner's current variant (plain/Vasco).
+// Returns the image object, hidden until splash_flyer_tick() draws it.
+lv_obj_t* splash_flyer_create(lv_obj_t *parent, int px);
+// left/right = x travel limits (px, parent coords), center_y = vertical center.
+void splash_flyer_tick(int left, int right, int center_y);
+
 // Corner mascot (usage screen, PSRAM boards): the still Clawd idles in the
 // logo slot, does occasional acts, and takes walk-off/lurk/walk-back trips.
 // feet_y = px of the art's ground line; cell = px per art cell in the corner.

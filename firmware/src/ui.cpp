@@ -504,6 +504,9 @@ static void build_pair_group(lv_obj_t* parent) {
 // Idle "Zzz" screen — shown when the host is connected but no usage update has
 // landed recently (token expired, daemon down, host asleep…). Full-screen, like
 // the pairing hint, so we never render hours-old numbers as if they were live.
+static lv_obj_t* idle_cloud = nullptr;
+static lv_obj_t* idle_flyer = nullptr;
+
 static void build_idle_group(lv_obj_t* parent) {
     idle_group = lv_obj_create(parent);
     lv_obj_set_size(idle_group, L.scr_w, L.scr_h - L.content_y);
@@ -517,8 +520,10 @@ static void build_idle_group(lv_obj_t* parent) {
     // A shrunk-down resting creature (the official cloud-ride animation)
     // sits between the header and the status line; the animated "Listening…"
     // status line carries the words, so no extra text is needed here.
-    lv_obj_t* creature = splash_mini_create(idle_group, "cloud", L.idle_px);
-    if (creature) lv_obj_align(creature, LV_ALIGN_CENTER, 0, -20);
+    idle_cloud = splash_mini_create(idle_group, "cloud", L.idle_px);
+    if (idle_cloud) lv_obj_align(idle_cloud, LV_ALIGN_CENTER, 0, -20);
+    // During Kiro's turn the cloud rider gives way to the ghost flying across.
+    idle_flyer = splash_flyer_create(idle_group, L.idle_px);
 
     lv_obj_add_flag(idle_group, LV_OBJ_FLAG_HIDDEN);  // update_view_state decides
 }
@@ -1852,7 +1857,19 @@ void ui_tick_anim(void) {
     lists_tick();
     if (current_screen != SCREEN_USAGE) return;
     update_view_state();
-    if (view_state == 1) splash_mini_tick();   // animate the sleeping creature on the idle screen
+    if (view_state == 1) {                    // idle screen: cloud rider, or the flying ghost on Kiro's turn
+        const bool kiro = splash_kiro_on_screen() && idle_flyer;
+        if (kiro) {
+            if (idle_cloud) lv_obj_add_flag(idle_cloud, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(idle_flyer, LV_OBJ_FLAG_HIDDEN);
+            const int group_h = L.scr_h - L.content_y;
+            splash_flyer_tick(L.margin, L.scr_w - L.margin, group_h / 2 - 20);
+        } else {
+            if (idle_flyer) lv_obj_add_flag(idle_flyer, LV_OBJ_FLAG_HIDDEN);
+            if (idle_cloud) lv_obj_clear_flag(idle_cloud, LV_OBJ_FLAG_HIDDEN);
+            splash_mini_tick();
+        }
+    }
 
     uint32_t now = lv_tick_get();
 
