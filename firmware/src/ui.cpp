@@ -613,10 +613,10 @@ static void init_usage_screen(lv_obj_t* scr) {
                          &lbl_kiro_pct, &lbl_kiro_label, &bar_kiro, &lbl_kiro_reset);
         lv_label_set_text(lbl_kiro_reset, "Sem dados do Kiro");
         panel_ag = make_usage_panel(panels,
-                         py0 + L.usage_panel_h + L.usage_panel_gap, "Antigravity",   // "- Daily" would collide with big token counts
+                         py0 + L.usage_panel_h + L.usage_panel_gap, "Gemini",
                          &lbl_ag_pct, &lbl_ag_label, &bar_ag, &lbl_ag_reset);
         lv_label_set_text(lbl_ag_pct, "---");
-        lv_label_set_text(lbl_ag_reset, "Sem uso do Antigravity hoje");
+        lv_label_set_text(lbl_ag_reset, "Sem uso do Gemini hoje");
     }
 
     // Brand colors: the number and bar in the tool's primary color, text in white.
@@ -860,7 +860,7 @@ static void init_history_screen(lv_obj_t* scr) {
     lv_obj_align(a0, LV_ALIGN_BOTTOM_LEFT, 0, 0);
     lv_obj_t* legend = make_dim_label(panel, L.axis_font, "");
     lv_label_set_recolor(legend, true);
-    lv_label_set_text_fmt(legend, "#%s Claude#  #%s Antigravity#  #%s Kiro#", COL_HEX_CLAUDE, COL_HEX_AG, COL_HEX_KIRO);
+    lv_label_set_text_fmt(legend, "#%s Claude#  #%s Gemini#  #%s Kiro#", COL_HEX_CLAUDE, COL_HEX_AG, COL_HEX_KIRO);
     lv_obj_align(legend, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_t* a2 = make_dim_label(panel, L.axis_font, "agora");
     lv_obj_align(a2, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
@@ -949,7 +949,7 @@ void ui_update_antigravity(uint64_t tokens_today, int pct_of_peak, int responses
     format_tokens(tokens_today, buf, sizeof(buf));
     lv_label_set_text(lbl_ag_pct, buf);
     lv_bar_set_value(bar_ag, pct_of_peak, LV_ANIM_ON);
-    if (responses <= 0) lv_label_set_text(lbl_ag_reset, "Sem uso do Antigravity hoje");
+    if (responses <= 0) lv_label_set_text(lbl_ag_reset, "Sem uso do Gemini hoje");
     else lv_label_set_text_fmt(lbl_ag_reset, "%d %s hoje \xC2\xB7 %d%% do maior dia",
                                responses, responses == 1 ? "resposta" : "respostas", pct_of_peak);
 }
@@ -1009,7 +1009,7 @@ static void init_models_screen(lv_obj_t* scr) {
 
     lv_obj_t* note = make_dim_label(panel, L.axis_font, "");
     lv_label_set_recolor(note, true);
-    lv_label_set_text_fmt(note, "#%s Claude# e #%s Antigravity#: tokens  #%s Kiro#: req",
+    lv_label_set_text_fmt(note, "#%s Claude# e #%s Gemini#: tokens  #%s Kiro#: req",
                           COL_HEX_CLAUDE, COL_HEX_AG, COL_HEX_KIRO);
     lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 }
@@ -1695,7 +1695,7 @@ void ui_update_models(const ModelUsage* models, int count, int kiro_requests, ui
 
     for (int i = 0; i < MODEL_ROWS; i++) {
         if (i == ag_row) {                     // Antigravity row: white name, light-blue tokens + bar
-            lv_label_set_text(lbl_model_name[i], "Antigravity");
+            lv_label_set_text(lbl_model_name[i], "Gemini");
             format_tokens(ag_tokens, buf, sizeof(buf));
             lv_label_set_text(lbl_model_tokens[i], buf);
             lv_obj_set_style_text_color(lbl_model_tokens[i], COL_AG, 0);
