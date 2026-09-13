@@ -24,7 +24,7 @@ import httpx
 from bleak import BleakClient
 from bleak.exc import BleakError
 
-from market_quotes import CryptoQuotes, StockQuotes
+from market_quotes import CryptoQuotes, FiiQuotes, StockQuotes
 from costumes import costume_for
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines
@@ -552,6 +552,7 @@ _SELECTOR = PlanSelector()
 _MODEL_TALLY = ModelTokenTally()
 _CRYPTO = CryptoQuotes()
 _STOCKS = StockQuotes()
+_FIIS = FiiQuotes()
 _FIXTURES = TeamFixtures()
 _LIVE = LiveMatch(_FIXTURES)
 _KIRO = KiroUsage()
@@ -686,7 +687,7 @@ class Session:
         except OSError as e:
             log(f"Model tally failed: {e}")
         extras.append(_KIRO.get(now))
-        for label, source in (("Crypto", _CRYPTO), ("Stock", _STOCKS), ("Fixtures", _FIXTURES), ("Routines", _ROUTINES), ("Agenda", _AGENDA)):
+        for label, source in (("Crypto", _CRYPTO), ("Stock", _STOCKS), ("FII", _FIIS), ("Fixtures", _FIXTURES), ("Routines", _ROUTINES), ("Agenda", _AGENDA)):
             try:
                 extras.extend(await source.get(now))
             except (httpx.HTTPError, ValueError) as e:

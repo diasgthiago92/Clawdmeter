@@ -223,6 +223,7 @@ static bool handle_extra_json(const char* json) {
     static const struct { const char* key; quote_table_t table; } QUOTE_KEYS[] = {
         {"x", QUOTES_CRYPTO},
         {"b", QUOTES_STOCKS},
+        {"f", QUOTES_FIIS},
     };
     for (const auto& q : QUOTE_KEYS) {
         if (!doc[q.key].is<JsonArray>()) continue;

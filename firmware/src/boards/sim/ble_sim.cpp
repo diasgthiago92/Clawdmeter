@@ -124,7 +124,7 @@ static void apply_script_keys(const char* json) {
     if (!screen) return;
     static const struct { const char* name; screen_t s; } SCREENS[] = {
         {"splash", SCREEN_SPLASH}, {"usage", SCREEN_USAGE}, {"agenda", SCREEN_AGENDA}, {"history", SCREEN_HISTORY},
-        {"models", SCREEN_MODELS}, {"routines", SCREEN_ROUTINES}, {"crypto", SCREEN_CRYPTO}, {"stocks", SCREEN_STOCKS},
+        {"models", SCREEN_MODELS}, {"routines", SCREEN_ROUTINES}, {"crypto", SCREEN_CRYPTO}, {"stocks", SCREEN_STOCKS}, {"fiis", SCREEN_FIIS},
         {"vasco", SCREEN_VASCO},
     };
     for (const auto& e : SCREENS) {

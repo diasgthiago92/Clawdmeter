@@ -59,7 +59,7 @@ Telas, em ordem de toque: Clawd → Uso → Histórico → Modelos → Cripto �
 - As diretrizes do usuário estão no topo do `CLAUDE.md` (listas roláveis, todas as telas arrastáveis,
   cores Claude laranja / Kiro roxo, Kiro nunca com camisa do Flamengo).
 - Telas, em ordem de toque: Clawd → Uso → Agenda de Hoje → Consumo - 24 horas → Modelos →
-  Rotinas Automáticas → Criptomoedas → Bovespa → Próximos Jogos do Vasco (→ Vasco ao vivo durante jogos).
+  Rotinas Automáticas → Criptomoedas → Bovespa → Fundos Imobiliários → Próximos Jogos do Vasco (→ Vasco ao vivo durante jogos).
 - Fontes novas do daemon: `google_agenda.py` (login único via `google_calendar_login.py`),
   `kiro_routines.py` (Slack #leo-dias-news), `kiro_usage.py` (créditos nos logs do Kiro IDE +
   atividade do kiro-cli), `team_fixtures.py` (ESPN, inclusive placar ao vivo).

@@ -29,7 +29,8 @@ COINS = (
 COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price"
 CRYPTO_REFRESH_S = 120
 
-# Up to 24 (three device pages of 8). ROXO34 is Nubank's BRL-quoted BDR on B3.
+# The device list scrolls, so the list can grow freely (QUOTE_TABLE_ROWS on the
+# firmware). ROXO34 is Nubank's BRL-quoted BDR on B3.
 STOCKS = (
     ("PETR4", "Petrobras"),
     ("VALE3", "Vale"),
@@ -49,7 +50,62 @@ STOCKS = (
     ("ISAE4", "ISA Energia"),
     ("CEAB3", "C&A"),
     ("COGN3", "Cogna"),
+    ("AXIA3", "Axia"),
+    ("SUZB3", "Suzano"),
+    ("RENT3", "Localiza"),
+    ("RDOR3", "Rede D'Or"),
+    ("EQTL3", "Equatorial"),
+    ("PRIO3", "PRIO"),
+    ("RADL3", "RD Saúde"),
+    ("SBSP3", "Sabesp"),
+    ("EMBJ3", "Embraer"),
+    ("VIVT3", "Vivo"),
+    ("TIMS3", "TIM"),
+    ("UGPA3", "Ultrapar"),
+    ("LREN3", "Renner"),
+    ("CMIG4", "Cemig"),
+    ("CPLE3", "Copel"),
+    ("ENEV3", "Eneva"),
+    ("BBSE3", "BB Seguros"),
+    ("SANB11", "Santander"),
+    ("BPAC11", "BTG Pactual"),
+    ("VBBR3", "Vibra"),
 )
+
+# Brazilian real-estate funds (FIIs) for their own screen, same row format.
+FIIS = (
+    ("MXRF11", "Maxi"),
+    ("HGLG11", "CSHG Log"),
+    ("KNRI11", "Kinea RI"),
+    ("XPML11", "XP Malls"),
+    ("VISC11", "Vinci SC"),
+    ("HGRU11", "Pátria RU"),
+    ("BTLG11", "BTG Log"),
+    ("KNCR11", "Kinea CRI"),
+    ("KNIP11", "Kinea IP"),
+    ("CPTS11", "Capitânia"),
+    ("IRDM11", "Iridium"),
+    ("HGRE11", "CSHG RE"),
+    ("XPLG11", "XP Log"),
+    ("VILG11", "Vinci Log"),
+    ("BRCO11", "Bresco"),
+    ("RECR11", "REC CRI"),
+    ("TRXF11", "TRX"),
+    ("HSML11", "HSI Malls"),
+    ("VGIR11", "Valora"),
+    ("RBRR11", "RBR CRI"),
+    ("RBRF11", "RBR Alpha"),
+    ("JSRE11", "JS RE"),
+    ("PVBI11", "VBI Prime"),
+    ("KNSC11", "Kinea Sec"),
+    ("MCCI11", "Mauá"),
+    ("HFOF11", "Hedge FoF"),
+    ("GGRC11", "GGR"),
+    ("ALZR11", "Alianza"),
+    ("LVBI11", "VBI Log"),
+    ("KNHY11", "Kinea HY"),
+)
+FUNDAMENTUS_FII_URL = "https://www.fundamentus.com.br/fii_resultado.php"
 INDEX_SYMBOL = "^BVSP"
 YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 STOCKS_REFRESH_S = 300
@@ -182,8 +238,14 @@ class CryptoQuotes(_Refreshing):
 
 
 class StockQuotes(_Refreshing):
+    """B3 tickers: Yahoo prices + Fundamentus P/VP. Stocks by default; FiiQuotes reuses it."""
+
     refresh_s = STOCKS_REFRESH_S
     headers = {"User-Agent": "Mozilla/5.0"}  # Yahoo and Fundamentus reject httpx's default UA
+    key = "b"
+    tickers = STOCKS
+    fundamentus_url = FUNDAMENTUS_URL
+    index_symbol: str | None = INDEX_SYMBOL
 
     def __init__(self) -> None:
         super().__init__()
@@ -195,7 +257,7 @@ class StockQuotes(_Refreshing):
             return self.fundamentals
         self.fundamentals_at = now
         try:
-            resp = await http.get(FUNDAMENTUS_URL)
+            resp = await http.get(self.fundamentus_url)
             resp.raise_for_status()
             fresh = parse_fundamentus(resp.content.decode("latin-1"))
         except httpx.HTTPError:
@@ -214,16 +276,26 @@ class StockQuotes(_Refreshing):
             return None
 
     async def _fetch(self, http: httpx.AsyncClient) -> list[dict]:
-        symbols = [f"{ticker}.SA" for ticker, _ in STOCKS] + [INDEX_SYMBOL]
+        symbols = [f"{ticker}.SA" for ticker, _ in self.tickers]
+        if self.index_symbol:
+            symbols.append(self.index_symbol)
         fundamentals, *results = await asyncio.gather(
             self._fundamentals(http, self.fetched_at), *(self._chart(http, s) for s in symbols))
+        quotes = results[:len(self.tickers)]
         rows = [
             [ticker, name, format_number(q[0], 2), format_pvp(fundamentals.get(ticker)), q[1]]
-            for (ticker, name), q in zip(STOCKS, results[:-1])
+            for (ticker, name), q in zip(self.tickers, quotes)
             if q is not None
         ]
         if not rows:
             return []
-        index = results[-1]
+        index = results[-1] if self.index_symbol else None
         header = {"i": [format_number(index[0], 0), index[1]]} if index else None
-        return chunk_table("b", rows, header)
+        return chunk_table(self.key, rows, header)
+
+
+class FiiQuotes(StockQuotes):
+    key = "f"
+    tickers = FIIS
+    fundamentus_url = FUNDAMENTUS_FII_URL
+    index_symbol = None
