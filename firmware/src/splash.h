@@ -28,6 +28,9 @@ bool splash_is_active(void);
 // its splash turn when the splash shows, its corner turn otherwise.
 bool splash_kiro_on_screen(void);
 
+// Vasco match day (from the daemon): Clawd and the Kiro ghost both wear the Vasco shirt.
+void splash_set_vasco_day(bool on);
+
 // Root container (so ui.cpp can attach a click event).
 lv_obj_t* splash_get_root(void);
 

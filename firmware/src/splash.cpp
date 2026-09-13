@@ -75,6 +75,83 @@ static const char* GROUP_NAMES[GROUP_COUNT][GROUP_MAX] = {
 // 60×60 grid (index 0 = background elsewhere). 3.6 KB of static RAM.
 static uint8_t stage_cells[GRID * GRID];
 
+// ─── Vasco match day: everyone wears the Vasco shirt ─────────────────────────
+// On days the Vasco plays (daemon "vd"), the Kiro ghost always uses its Vasco
+// variant and Clawd gets the shirt painted over his torso at render time: the
+// body-orange cells below the eyes turn dark (shirt), with a white diagonal
+// sash from the wearer's right shoulder and a red cross on it. Works on any
+// official frame because Clawd's body is always the same palette color.
+#define CLAWD_BODY_565   0xDBAA
+#define SHIRT_565        0x3186   // black shirt, lifted so it reads on the black screen
+#define SASH_565         0xFFFF
+#define CROSS_565        0xD003
+enum { SHIRT_NONE = 0, SHIRT_BODY, SHIRT_SASH, SHIRT_CROSS };
+static bool vasco_day = false;
+
+static int body_code_of(const uint16_t *palette) {
+    if (!palette) return -1;
+    for (int i = 1; i < SPLASH_PALETTE_SIZE; i++) if (palette[i] == CLAWD_BODY_565) return i;
+    return -1;
+}
+
+// Fills mask (w*h) with SHIRT_* for one frame; false when there is no Clawd torso.
+static bool shirt_mask(const uint8_t *cells, int w, int h, const uint16_t *palette, uint8_t *mask) {
+    memset(mask, 0, (size_t)w * h);
+    const int body = body_code_of(palette);
+    if (body < 0 || h > 256) return false;
+    static int counts[256];
+    int max_count = 0;
+    for (int y = 0; y < h; y++) {
+        int c = 0;
+        for (int x = 0; x < w; x++) c += cells[y * w + x] == body;
+        counts[y] = c;
+        if (c > max_count) max_count = c;
+    }
+    if (max_count < 6) return false;
+    int t0 = -1, t1 = -1;                              // torso rows (legs are much narrower)
+    for (int y = 0; y < h; y++) {
+        if (counts[y] * 20 >= max_count * 11) { if (t0 < 0) t0 = y; t1 = y; }
+    }
+    int eyes = -1;                                     // last eye row: holes in the upper half of the torso
+    for (int y = t0; y <= t0 + (t1 - t0) / 2; y++) {
+        int bx0 = w, bx1 = -1;
+        for (int x = 0; x < w; x++) if (cells[y * w + x] == body) { if (x < bx0) bx0 = x; bx1 = x; }
+        for (int x = bx0 + 1; x < bx1; x++) {
+            const uint8_t c = cells[y * w + x];
+            if (c != body && c != 0) { eyes = y; break; }
+        }
+    }
+    int y0 = eyes >= 0 ? eyes + 1 : t0 + (t1 - t0) / 2;
+    if (y0 < t0 + (t1 - t0) * 2 / 5) y0 = t0 + (t1 - t0) * 2 / 5;   // shirt never climbs above the chest
+    const int y1 = t1;
+    if (y1 - y0 < 1) return false;
+    int cx0 = w, cx1 = -1;                             // torso core width from the bottom row (no arms)
+    for (int x = 0; x < w; x++) if (cells[y1 * w + x] == body) { if (x < cx0) cx0 = x; cx1 = x; }
+    if (cx1 - cx0 < 3) return false;
+    for (int y = y0; y <= y1; y++)
+        for (int x = 0; x < w; x++)
+            if (cells[y * w + x] == body) mask[y * w + x] = SHIRT_BODY;
+    const int sw = (cx1 - cx0 + 1) / 6 > 2 ? (cx1 - cx0 + 1) / 6 : 2;
+    auto sash_x = [&](int y) { return cx0 + (y - y0) * (cx1 - cx0 + 1 - sw) / (y1 - y0); };
+    for (int y = y0; y <= y1; y++)
+        for (int x = sash_x(y); x < sash_x(y) + sw && x < w; x++)
+            if (mask[y * w + x]) mask[y * w + x] = SHIRT_SASH;
+    const int cy = y0 + (y1 - y0) / 3, cxc = sash_x(cy) + sw / 2;
+    const int arm = sw / 2 > 1 ? sw / 2 : 1;
+    for (int d = -arm; d <= arm; d++) {
+        if (cy + d >= y0 && cy + d <= y1 && mask[(cy + d) * w + cxc]) mask[(cy + d) * w + cxc] = SHIRT_CROSS;
+        if (cxc + d >= 0 && cxc + d < w && mask[cy * w + cxc + d]) mask[cy * w + cxc + d] = SHIRT_CROSS;
+    }
+    return true;
+}
+
+static inline uint16_t shirt_color(uint8_t m, uint16_t base) {
+    return m == SHIRT_BODY ? SHIRT_565 : m == SHIRT_SASH ? SASH_565 : m == SHIRT_CROSS ? CROSS_565 : base;
+}
+
+static uint8_t stage_shirt[GRID * GRID];
+static bool    stage_has_shirt = false;
+
 // The official 55×37 art stage sits at a fixed anchor on the 60×60 grid, and
 // every animation is placed at its authored stage offset (ox/oy) — never
 // centered per-animation. All animations share one idle-Clawd position
@@ -292,6 +369,7 @@ static void blit_cells(const uint8_t* cells, const uint16_t* palette,
         for (int gx = gx0; gx <= gx1; gx++) {       // expand one source row across
             uint8_t code = cells[gy * GRID + gx];
             uint16_t color = (palette && code < SPLASH_PALETTE_SIZE) ? palette[code] : COL_EMPTY;
+            if (stage_has_shirt) color = shirt_color(stage_shirt[gy * GRID + gx], color);
             uint16_t* p = &strip_buf[(gx - gx0) * spc];
             for (int i = 0; i < spc; i++) p[i] = color;
         }
@@ -304,6 +382,7 @@ static void blit_cells(const uint8_t* cells, const uint16_t* palette,
 static void render_frame(const uint8_t *cells, const uint16_t *palette) {
     if (!strip_buf) return;
     if (!active) return;          // never draw to the panel while not shown
+    stage_has_shirt = vasco_day && shirt_mask(cells, GRID, GRID, palette, stage_shirt);
     bool full = force_full || !prev_valid || palette != prev_palette;
     force_full = false;
 
@@ -332,10 +411,12 @@ static void render_frame(const uint8_t *cells, const uint16_t *palette) {
 
 static void render_frame(const uint8_t *cells, const uint16_t *palette) {
     if (!row_buf || !canvas_buf) return;
+    stage_has_shirt = vasco_day && shirt_mask(cells, GRID, GRID, palette, stage_shirt);
     for (int gy = 0; gy < GRID; gy++) {
         for (int gx = 0; gx < GRID; gx++) {
             uint8_t code = cells[gy * GRID + gx];
             uint16_t color = (palette && code < SPLASH_PALETTE_SIZE) ? palette[code] : COL_EMPTY;
+            if (stage_has_shirt) color = shirt_color(stage_shirt[gy * GRID + gx], color);
             uint16_t *p = &row_buf[gx * cell];
             for (int i = 0; i < cell; i++) p[i] = color;
         }
@@ -364,10 +445,13 @@ static void mini_render(void) {
     const int aw = mini_anim->w, ah = mini_anim->h;
     const uint8_t *cells = &mini_anim->frames[(size_t)mini_frame * aw * ah];
     const uint16_t *pal = mini_anim->palette;
+    static uint8_t mask[64 * 64];
+    const bool shirt = vasco_day && aw * ah <= (int)sizeof(mask) && shirt_mask(cells, aw, ah, pal, mask);
     for (int gy = 0; gy < ah; gy++) {
         for (int gx = 0; gx < aw; gx++) {
             uint8_t code = cells[gy * aw + gx];
             uint16_t color = (pal && code < SPLASH_PALETTE_SIZE) ? pal[code] : COL_EMPTY;
+            if (shirt) color = shirt_color(mask[gy * aw + gx], color);
             for (int dy = 0; dy < mini_cell; dy++) {
                 uint16_t *dst = &mini_buf[(gy * mini_cell + dy) * mini_w + gx * mini_cell];
                 for (int dx = 0; dx < mini_cell; dx++) dst[dx] = color;
@@ -489,10 +573,15 @@ static void mas_render(const splash_anim_def_t *a, uint16_t frame, bool mirror,
     uint16_t *color = (uint16_t*)buf;
     uint8_t  *alpha = buf + (size_t)w * h * 2;
     const uint8_t *src = &a->frames[(size_t)frame * a->w * a->h];
+    static uint8_t mask[64 * 64];
+    const bool shirt = vasco_day && a->w * a->h <= (int)sizeof(mask) &&
+                       shirt_mask(src, a->w, a->h, a->palette, mask);
     for (int gy = 0; gy < a->h; gy++) {
         for (int gx = 0; gx < a->w; gx++) {
-            uint8_t code = src[gy * a->w + (mirror ? a->w - 1 - gx : gx)];
+            const int sx = mirror ? a->w - 1 - gx : gx;
+            uint8_t code = src[gy * a->w + sx];
             uint16_t c = (code && code < SPLASH_PALETTE_SIZE) ? a->palette[code] : 0;
+            if (shirt) c = shirt_color(mask[gy * a->w + sx], c);
             uint8_t  al = code ? 255 : 0;
             for (int dy = 0; dy < cell; dy++) {
                 uint16_t *cp = &color[(gy * cell + dy) * w + gx * cell];
@@ -553,10 +642,10 @@ lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cel
     return mas_img;
 }
 
-static bool mas_kiro_vasco = true;       // flipped each ghost turn: plain, Vasco shirt, plain...
+static bool mas_kiro_vasco = false;      // this ghost turn wears the Vasco shirt (match days)
 
 static void mas_start_kiro(uint32_t now) {
-    mas_kiro_vasco = !mas_kiro_vasco;
+    mas_kiro_vasco = vasco_day;              // Vasco shirt only on match days
     mas_anim = mas_kiro_vasco ? &kiro_vasco_anim : &kiro_ghost_anim;
     mas_frame = 0;
     mas_frame_started = now;
@@ -896,7 +985,6 @@ static uint16_t kiro_frame = 0;
 static uint32_t kiro_frame_ms = 0;
 
 static const splash_anim_def_t *kiro_anim = &kiro_ghost_anim;   // plain or Vasco shirt
-static bool kiro_vasco_next = false;
 
 static const uint8_t* compose_kiro(void) {
     const splash_anim_def_t *a = kiro_anim;
@@ -917,8 +1005,7 @@ static const uint8_t* compose_kiro(void) {
 
 static void kiro_splash_start(void) {
     kiro_on = true;
-    kiro_anim = kiro_vasco_next ? &kiro_vasco_anim : &kiro_ghost_anim;
-    kiro_vasco_next = !kiro_vasco_next;
+    kiro_anim = vasco_day ? &kiro_vasco_anim : &kiro_ghost_anim;   // Vasco shirt only on match days
     kiro_home_x = (GRID - kiro_ghost_anim.w) / 2;
     kiro_x = kiro_target = kiro_home_x;
     kiro_face = +1;
@@ -929,8 +1016,7 @@ static void kiro_splash_start(void) {
     render_frame(compose_kiro(), kiro_anim->palette);
 }
 
-// Next rotation step: alternate Clawd picks with ghost turns, the ghost
-// switching between plain and the Vasco shirt (Clawd, Kiro, Clawd, Kiro Vasco).
+// Next rotation step: alternate Clawd picks with ghost turns.
 static void splash_rotate(void) {
     if (kiro_next) {
         kiro_next = false;
@@ -1148,6 +1234,28 @@ void splash_flyer_tick(int left, int right, int center_y) {
 }
 
 bool splash_is_active(void) { return active; }
+
+void splash_set_vasco_day(bool on) {
+    if (on == vasco_day) return;
+    vasco_day = on;
+    // Redraw now so the shirts appear/disappear without waiting for a new frame.
+    if (active) {
+#if SPLASH_DIRECT_DRAW
+        force_full = true;
+#else
+        const splash_anim_def_t *a = &splash_anims[cur_anim];
+        if (kiro_on) {
+            kiro_anim = on ? &kiro_vasco_anim : &kiro_ghost_anim;
+            render_frame(compose_kiro(), kiro_anim->palette);
+        } else if (a->frame_count) {
+            render_frame(compose_stage(a, cur_frame), a->palette);
+        }
+#endif
+    }
+    if (mas_img && mas_anim && mas_mode == MAS_STILL)
+        mas_render(mas_anim, mas_frame, mas_face < 0, &mas_dsc, mas_buf, mas_img, mas_cell, mas_x, mas_feet_y);
+    if (mini_buf && mini_anim) mini_render();
+}
 
 bool splash_kiro_on_screen(void) {
     if (active) return kiro_on;

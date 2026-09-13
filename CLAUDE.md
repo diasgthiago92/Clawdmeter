@@ -21,6 +21,11 @@
    Cores de dado (séries Claude × Kiro em Consumo 24h e Modelos) são fixas.
 3. **O boneco do Kiro JAMAIS pode usar a camisa do Flamengo.** A única camisa de
    time permitida é a do Vasco (`kiro_vasco` em `tools/make_kiro_ghost.py`).
+   **Camisa do Vasco só em dia de jogo do Vasco, e nesse dia os dois usam:** o
+   daemon manda `{"vd": 1}` quando o Vasco joga no dia (`is_match_day` em
+   `team_fixtures.py`); o Kiro usa sempre a variante Vasco e o Clawd recebe a
+   camisa pintada sobre o tronco em qualquer animação (`shirt_mask` em
+   `splash.cpp`). Sem jogo no dia, nenhum dos dois usa camisa.
 4. Interface sempre em **português**.
 
 Notas de implementação ligadas a essas diretrizes:

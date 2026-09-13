@@ -28,7 +28,7 @@ from market_quotes import CryptoQuotes, StockQuotes
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines
 from kiro_usage import KiroActivity, KiroUsage
-from team_fixtures import LiveMatch, TeamFixtures
+from team_fixtures import LiveMatch, TeamFixtures, is_match_day
 from usage_extras import (
     ModelTokenTally,
     STACK_HOURS,
@@ -691,6 +691,8 @@ class Session:
             except (httpx.HTTPError, ValueError) as e:
                 log(f"{label} data unavailable: {e}")
                 extras.extend(source.payloads)
+        # Vasco match day: Clawd and the Kiro ghost wear the Vasco shirt on the device.
+        extras.append({"vd": int(is_match_day(_FIXTURES.events, datetime.datetime.now(datetime.timezone.utc)))})
         for extra in extras:
             await asyncio.sleep(EXTRA_WRITE_GAP_S)
             if not await self.write_payload(extra):
