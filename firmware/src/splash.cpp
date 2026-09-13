@@ -1,5 +1,6 @@
 #include "splash.h"
 #include "splash_animations.h"
+#include "kiro_ghost.h"
 #include "splash_geometry.h"
 #include "theme.h"
 #include "usage_rate.h"
@@ -44,7 +45,9 @@ static bool active = false;
 
 // While splash is showing, auto-cycle to the next animation in the current
 // rate-driven group every this many ms.
+#ifndef SPLASH_ROTATE_INTERVAL_MS
 #define SPLASH_ROTATE_INTERVAL_MS 20000
+#endif
 
 // Usage-rate animation groups: 4 groups × up to 4 animations each.
 // Filled at init by matching literal names from splash_anims[].
@@ -426,7 +429,28 @@ static int  mas_lurk_cell = 8;
 static int  mas_screen_w = 480;
 static bool mas_visible = false;
 
-enum MasMode { MAS_STILL, MAS_ACT, MAS_WALK_OFF, MAS_LURK, MAS_WALK_IN };
+enum MasMode { MAS_STILL, MAS_ACT, MAS_WALK_OFF, MAS_LURK, MAS_WALK_IN, MAS_KIRO };
+// The corner slot alternates Clawd with the Kiro ghost. Turns only hand over
+// while Clawd is idle, so an act or lurk trip always finishes first.
+#ifndef MAS_CLAWD_TURN_MS
+#define MAS_CLAWD_TURN_MS 30000
+#endif
+#ifndef MAS_KIRO_TURN_MS
+#define MAS_KIRO_TURN_MS  25000
+#endif
+static uint32_t mas_turn_started = 0;
+// Ghost trip inside its turn: float in the slot, drift off left, peek in big
+// from the right edge, then float back into the slot.
+enum KiroPhase { KP_FLOAT, KP_OFF, KP_PEEK_IN, KP_PEEK_HOLD, KP_PEEK_OUT, KP_IN, KP_REST };
+#ifndef KP_FLOAT_MS
+#define KP_FLOAT_MS     6000
+#endif
+#define KP_GLIDE_PX_S   140
+#define KP_PEEK_SLIDE_MS 600
+#define KP_PEEK_HOLD_MS 2200
+static KiroPhase kp = KP_FLOAT;
+static uint32_t  kp_started = 0, kp_moved_ms = 0;
+static int       kp_slot_x = 0;
 static MasMode mas_mode = MAS_STILL;
 static const splash_anim_def_t *mas_anim = NULL;
 static uint16_t mas_frame = 0;
@@ -511,8 +535,11 @@ lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cel
     int mind = (c.width < c.height) ? c.width : c.height;
     mas_lurk_cell = mind / SPLASH_GRID;
     if (mas_lurk_cell < 1) mas_lurk_cell = 1;
-    const size_t lurk_bytes = lurk ?
+    size_t lurk_bytes = lurk ?
         (size_t)(lurk->w * mas_lurk_cell) * (lurk->h * mas_lurk_cell) * 3 : 0;
+    const size_t ghost_bytes =                          // the Kiro ghost peeks in with this buffer too
+        (size_t)(kiro_ghost_anim.w * mas_lurk_cell) * (kiro_ghost_anim.h * mas_lurk_cell) * 3;
+    if (lurk_bytes && ghost_bytes > lurk_bytes) lurk_bytes = ghost_bytes;
     mas_buf      = (uint8_t*)heap_caps_malloc(mas_bytes,  MALLOC_CAP_SPIRAM);
     mas_lurk_buf = lurk_bytes ? (uint8_t*)heap_caps_malloc(lurk_bytes, MALLOC_CAP_SPIRAM) : NULL;
     if (!mas_buf) return NULL;
@@ -525,6 +552,103 @@ lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cel
     return mas_img;
 }
 
+static bool mas_kiro_vasco = true;       // flipped each ghost turn: plain, Vasco shirt, plain...
+
+static void mas_start_kiro(uint32_t now) {
+    mas_kiro_vasco = !mas_kiro_vasco;
+    mas_anim = mas_kiro_vasco ? &kiro_vasco_anim : &kiro_ghost_anim;
+    mas_frame = 0;
+    mas_frame_started = now;
+    mas_from_loop = false;
+    mas_face = +1;
+    const splash_anim_def_t *still = anim_by_name("walking");   // center on Clawd's still pose
+    kp_slot_x = mas_slot_x + (still ? (still->w - kiro_ghost_anim.w) * mas_cell / 2 : 0);
+    mas_x = kp_slot_x;
+    mas_mode = MAS_KIRO;
+    mas_turn_started = now;
+    kp = KP_FLOAT;
+    kp_started = kp_moved_ms = now;
+    mas_render(mas_anim, 0, false, &mas_dsc, mas_buf, mas_img, mas_cell, mas_x, mas_feet_y);
+}
+
+static const int KP_BIG_FEET_Y_DIV = 2;   // big ghost centered vertically
+static void kp_draw_big(int x) {
+    const splash_anim_def_t *a = mas_anim;
+    const int h = a->h * mas_lurk_cell;
+    const int feet = board_caps().height / KP_BIG_FEET_Y_DIV + h / 2;
+    mas_render(a, mas_frame, true, &mas_lurk_dsc, mas_lurk_buf, mas_lurk_img,
+               mas_lurk_cell, x, feet);
+}
+
+static void mas_kiro_tick(uint32_t now) {
+    const splash_anim_def_t *a = mas_anim;
+    const int big_w = a->w * mas_lurk_cell;
+    const int peek_x = mas_screen_w - big_w * 3 / 5;       // 60% of the big ghost shows
+    const uint32_t in_phase = now - kp_started;
+    bool new_frame = false;
+    if (now - mas_frame_started >= a->holds[mas_frame]) {
+        mas_frame = (mas_frame + 1) % a->frame_count;
+        mas_frame_started = now;
+        new_frame = true;
+    }
+    auto next = [&](KiroPhase p) { kp = p; kp_started = now; kp_moved_ms = now; };
+    auto glide = [&](int target) -> bool {                  // true once arrived
+        int step = (int)((now - kp_moved_ms) * KP_GLIDE_PX_S / 1000);
+        if (step > 0) {
+            kp_moved_ms = now;
+            const int d = target - mas_x;
+            mas_x = (step >= abs(d)) ? target : mas_x + (d > 0 ? step : -step);
+        }
+        return mas_x == target;
+    };
+
+    switch (kp) {
+    case KP_FLOAT:
+        if (in_phase >= KP_FLOAT_MS && mas_lurk_img && mas_lurk_buf) next(KP_OFF);
+        break;
+    case KP_OFF:
+        if (glide(-a->w * mas_cell)) {
+            lv_obj_add_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(mas_lurk_img);
+            next(KP_PEEK_IN);
+        }
+        break;
+    case KP_PEEK_IN:
+    case KP_PEEK_OUT: {
+        uint32_t t = in_phase > KP_PEEK_SLIDE_MS ? KP_PEEK_SLIDE_MS : in_phase;
+        if (kp == KP_PEEK_OUT) t = KP_PEEK_SLIDE_MS - t;
+        kp_draw_big(mas_screen_w - (int)((mas_screen_w - peek_x) * t / KP_PEEK_SLIDE_MS));
+        if (in_phase >= KP_PEEK_SLIDE_MS) {
+            if (kp == KP_PEEK_IN) {
+                next(KP_PEEK_HOLD);
+            } else {
+                lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
+                mas_x = mas_screen_w;
+                next(KP_IN);
+            }
+        }
+        return;
+    }
+    case KP_PEEK_HOLD:
+        if (new_frame) kp_draw_big(peek_x);
+        if (in_phase >= KP_PEEK_HOLD_MS) next(KP_PEEK_OUT);
+        return;
+    case KP_IN:
+        if (glide(kp_slot_x)) next(KP_REST);
+        break;
+    case KP_REST:
+        if (now - mas_turn_started >= MAS_KIRO_TURN_MS) {
+            mas_show_still();                   // hand the slot back to Clawd
+            mas_turn_started = now;
+            return;
+        }
+        break;
+    }
+    mas_render(a, mas_frame, false, &mas_dsc, mas_buf, mas_img, mas_cell, mas_x, mas_feet_y);
+}
+
 void splash_mascot_set_visible(bool v) {
     mas_visible = v;
     if (!mas_img) return;
@@ -534,6 +658,14 @@ void splash_mascot_set_visible(bool v) {
         // siblings (battery icon, labels) whenever he's shown.
         lv_obj_move_foreground(mas_img);
         if (mas_lurk_img) lv_obj_move_foreground(mas_lurk_img);
+        if (mas_mode == MAS_KIRO) {             // screen change mid-turn: keep the ghost, in the slot
+            if (mas_lurk_img) lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+            if (kp != KP_FLOAT && kp != KP_REST) kp = KP_REST;
+            mas_x = kp_slot_x;
+            mas_render(mas_anim, mas_frame, false, &mas_dsc, mas_buf, mas_img,
+                       mas_cell, mas_x, mas_feet_y);
+            return;
+        }
         mas_show_still();                       // restart clean at the slot
     } else {
         lv_obj_add_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
@@ -544,8 +676,13 @@ void splash_mascot_set_visible(bool v) {
 void splash_mascot_tick(void) {
     if (!mas_img || !mas_visible || !mas_anim) return;
     const uint32_t now = millis();
+    if (mas_mode == MAS_KIRO) { mas_kiro_tick(now); return; }
 
     if (mas_mode == MAS_STILL) {
+        if (now - mas_turn_started >= MAS_CLAWD_TURN_MS) {
+            mas_start_kiro(now);
+            return;
+        }
         int g = usage_rate_group();
         if (g < 0 || g > 3) g = 0;
         if (now - mas_mode_started < MAS_STILL_MS_BY_RATE[g]) return;
@@ -671,7 +808,7 @@ void splash_init(lv_obj_t *parent) {
     lv_obj_set_style_bg_opa(splash_container, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(splash_container, 0, 0);
     lv_obj_set_style_pad_all(splash_container, 0, 0);
-    lv_obj_clear_flag(splash_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(splash_container, LV_OBJ_FLAG_SCROLLABLE);   // ui.cpp makes it draggable on PSRAM boards
 
 #if SPLASH_DIRECT_DRAW
     // Direct-to-panel path (no PSRAM): no LVGL canvas. Compute on-screen cell
@@ -743,6 +880,102 @@ void splash_init(lv_obj_t *parent) {
     lv_obj_add_flag(splash_container, LV_OBJ_FLAG_HIDDEN);
 }
 
+// ─── Kiro turn on the splash ────────────────────────────────────────────────
+// Rotation alternates Clawd's animations with the Kiro ghost. The ghost stands
+// on the same ground line as Clawd, bobs through its own frames, and glides
+// through the walk demo route: home → right edge → off left → home.
+#define KIRO_GLIDE_MS_PER_CELL 45
+static bool     kiro_on = false;          // the ghost owns the splash stage
+static bool     kiro_next = false;        // next rotation goes to the ghost
+static int      kiro_x = 0, kiro_home_x = 0, kiro_target = 0;
+static int      kiro_face = +1;
+static uint8_t  kiro_phase = 0;
+static uint32_t kiro_phase_ms = 0, kiro_step_ms = 0;
+static uint16_t kiro_frame = 0;
+static uint32_t kiro_frame_ms = 0;
+
+static const splash_anim_def_t *kiro_anim = &kiro_ghost_anim;   // plain or Vasco shirt
+static bool kiro_vasco_next = false;
+
+static const uint8_t* compose_kiro(void) {
+    const splash_anim_def_t *a = kiro_anim;
+    memset(stage_cells, 0, sizeof(stage_cells));
+    const int ay = STAGE_ANCHOR_Y + 37 - a->h;      // Clawd's ground line
+    const uint8_t *src = &a->frames[(size_t)kiro_frame * a->w * a->h];
+    for (int r = 0; r < a->h; r++) {
+        const int dy = ay + r;
+        if (dy < 0 || dy >= GRID) continue;
+        for (int c = 0; c < a->w; c++) {
+            const int dx = kiro_x + c;
+            if (dx < 0 || dx >= GRID) continue;
+            stage_cells[dy * GRID + dx] = src[r * a->w + (kiro_face < 0 ? a->w - 1 - c : c)];
+        }
+    }
+    return stage_cells;
+}
+
+static void kiro_splash_start(void) {
+    kiro_on = true;
+    kiro_anim = kiro_vasco_next ? &kiro_vasco_anim : &kiro_ghost_anim;
+    kiro_vasco_next = !kiro_vasco_next;
+    kiro_home_x = (GRID - kiro_ghost_anim.w) / 2;
+    kiro_x = kiro_target = kiro_home_x;
+    kiro_face = +1;
+    kiro_phase = 0;
+    kiro_frame = 0;
+    kiro_phase_ms = kiro_frame_ms = kiro_step_ms = millis();
+    last_pick_ms = kiro_phase_ms;
+    render_frame(compose_kiro(), kiro_anim->palette);
+}
+
+// Next rotation step: alternate Clawd picks with ghost turns, the ghost
+// switching between plain and the Vasco shirt (Clawd, Kiro, Clawd, Kiro Vasco).
+static void splash_rotate(void) {
+    if (kiro_next) {
+        kiro_next = false;
+        kiro_splash_start();
+        return;
+    }
+    kiro_next = true;
+    kiro_on = false;
+    splash_pick_for_current_rate();
+}
+
+static void kiro_splash_tick(uint32_t now) {
+    const splash_anim_def_t *a = kiro_anim;
+    bool dirty = false;
+    if (now - kiro_frame_ms >= a->holds[kiro_frame]) {
+        kiro_frame = (kiro_frame + 1) % a->frame_count;
+        kiro_frame_ms = now;
+        dirty = true;
+    }
+    const bool arrived = kiro_x == kiro_target;
+    if (!arrived && now - kiro_step_ms >= KIRO_GLIDE_MS_PER_CELL) {
+        kiro_x += (kiro_target > kiro_x) ? 1 : -1;
+        kiro_step_ms = now;
+        dirty = true;
+    }
+    if (arrived) {
+        const uint32_t held = now - kiro_phase_ms;
+        auto glide = [&](int target, uint8_t next) {
+            kiro_target = target;
+            kiro_face = (target >= kiro_x) ? +1 : -1;
+            kiro_phase = next;
+            kiro_step_ms = now;
+        };
+        switch (kiro_phase) {
+            case 0: if (held > 2500) glide(GRID - a->w, 1); break;               // float at home
+            case 1: kiro_phase = 2; kiro_phase_ms = now; break;                  // reached right edge
+            case 2: if (held > 1200) glide(-a->w, 3); break;                     // float at the edge
+            case 3: kiro_phase = 4; kiro_phase_ms = now; break;                  // off-screen left
+            case 4: if (held > 800) glide(kiro_home_x, 5); break;                // empty stage
+            case 5: kiro_phase = 6; kiro_phase_ms = now; kiro_face = +1; dirty = true; break;
+            case 6: if (now - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) { splash_rotate(); return; } break;
+        }
+    }
+    if (dirty) render_frame(compose_kiro(), a->palette);
+}
+
 void splash_tick(void) {
     if (!active || SPLASH_ANIM_COUNT == 0) return;
     const uint32_t now = millis();
@@ -752,9 +985,12 @@ void splash_tick(void) {
     // black background this loop iteration.
     if (force_full) {
         const splash_anim_def_t *fa = &splash_anims[cur_anim];
-        if (fa->frame_count) render_frame(compose_stage(fa, cur_frame), fa->palette);
+        if (kiro_on)              render_frame(compose_kiro(), kiro_anim->palette);
+        else if (fa->frame_count) render_frame(compose_stage(fa, cur_frame), fa->palette);
     }
 #endif
+
+    if (kiro_on) { kiro_splash_tick(now); return; }
 
     const splash_anim_def_t *a = &splash_anims[cur_anim];
     if (a->frame_count == 0) return;
@@ -770,7 +1006,7 @@ void splash_tick(void) {
     // home; everything else releases its loop and switches after the outro.
     if (now - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) {
         if (walk_active) {
-            if (walk_phase == 0 && pb_done) splash_pick_for_current_rate();
+            if (walk_phase == 0 && pb_done) splash_rotate();
         } else {
             loop_release = true;
             pending_pick = true;
@@ -790,7 +1026,7 @@ void splash_tick(void) {
     if (next >= a->frame_count) {              // completed the file
         if (pending_pick) {
             pending_pick = false;
-            splash_pick_for_current_rate();
+            splash_rotate();
             return;
         }
         if (walk_active) {                     // walk finished: stand
@@ -827,6 +1063,7 @@ void splash_tick(void) {
 
 void splash_next(void) {
     if (SPLASH_ANIM_COUNT == 0) return;
+    kiro_on = false;
     cur_anim = (cur_anim + 1) % SPLASH_ANIM_COUNT;
     cur_frame = 0;
     frame_started_ms = millis();
@@ -859,7 +1096,14 @@ void splash_pick_for_current_rate(void) {
 
 bool splash_is_active(void) { return active; }
 
+bool splash_kiro_on_screen(void) {
+    if (active) return kiro_on;
+    return mas_img && mas_visible && mas_mode == MAS_KIRO;
+}
+
 void splash_show(void) {
+    kiro_on = false;
+    kiro_next = true;                 // Clawd opens; the ghost gets the next turn
     splash_pick_for_current_rate();   // select animation; direct path defers the draw
     if (splash_container) lv_obj_clear_flag(splash_container, LV_OBJ_FLAG_HIDDEN);
     active = true;

@@ -124,6 +124,125 @@ static bool parse_json(const char* json, UsageData* out) {
     return true;
 }
 
+// History bars ("hb"), per-model ("m"), crypto ("x"), B3 ("b") and fixtures ("v") payloads arrive as their own BLE writes so
+// each stays under the host's write-without-response size. Returns true when
+// the JSON was one of these, leaving UsageData untouched.
+static bool handle_extra_json(const char* json) {
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return false;
+
+    if (doc["hb"].is<JsonArray>()) {         // stacked hourly bars: Claude tokens + Kiro requests
+        ui_update_history_bars(doc["hb"][0] | "", doc["hb"][1] | "", doc["tc"] | (uint64_t)0, doc["tk"] | 0);
+        return true;
+    }
+    if (doc["m"].is<JsonArray>()) {
+        static ModelUsage models[MODELS_MAX];
+        memset(models, 0, sizeof(models));
+        int n = 0;
+        for (JsonArray row : doc["m"].as<JsonArray>()) {
+            if (n >= MODELS_MAX) break;
+            strlcpy(models[n].name, row[0] | "?", sizeof(models[n].name));
+            models[n].tokens = row[1] | (uint64_t)0;
+            n++;
+        }
+        ui_update_models(models, n, doc["mk"] | 0);
+        return true;
+    }
+    if (doc["g"].is<JsonArray>()) {
+        static AgendaRow rows[AGENDA_MAX];   // static: large for the loop task stack
+        memset(rows, 0, sizeof(rows));
+        int n = 0;
+        for (JsonArray src : doc["g"].as<JsonArray>()) {
+            if (n >= AGENDA_MAX) break;
+            strlcpy(rows[n].start, src[0] | "", sizeof(rows[n].start));
+            strlcpy(rows[n].end, src[1] | "", sizeof(rows[n].end));
+            strlcpy(rows[n].title, src[2] | "", sizeof(rows[n].title));
+            rows[n].state = src[3] | 2;
+            n++;
+        }
+        ui_update_agenda(rows, doc["o"] | 0, n, doc["n"] | n, (doc["login"] | 0) != 0);
+        return true;
+    }
+    if (doc["r"].is<JsonArray>()) {
+        static RoutineRow rows[ROUTINES_MAX];
+        memset(rows, 0, sizeof(rows));
+        int n = 0;
+        for (JsonArray src : doc["r"].as<JsonArray>()) {
+            if (n >= ROUTINES_MAX) break;
+            strlcpy(rows[n].name, src[0] | "?", sizeof(rows[n].name));
+            strlcpy(rows[n].time, src[1] | "", sizeof(rows[n].time));
+            rows[n].ok = (src[2] | 1) != 0;
+            rows[n].runs = src[3] | 1;
+            n++;
+        }
+        ui_update_routines(rows, doc["o"] | 0, n, doc["n"] | n);
+        return true;
+    }
+    if (doc["v"].is<JsonArray>()) {
+        static GameRow games[GAMES_MAX];
+        memset(games, 0, sizeof(games));
+        int n = 0;
+        for (JsonArray src : doc["v"].as<JsonArray>()) {
+            if (n >= GAMES_MAX) break;
+            strlcpy(games[n].opponent, src[0] | "?", sizeof(games[n].opponent));
+            games[n].home = strcmp(src[1] | "C", "C") == 0;
+            strlcpy(games[n].kickoff, src[2] | "", sizeof(games[n].kickoff));
+            strlcpy(games[n].competition, src[3] | "", sizeof(games[n].competition));
+            n++;
+        }
+        ui_update_games(games, doc["o"] | 0, n, doc["n"] | n);
+        return true;
+    }
+    if (!doc["k"].isNull()) {                // Kiro credits: [percent, days to reset] or 0
+        JsonArray k = doc["k"].as<JsonArray>();
+        if (k.isNull()) ui_update_kiro(-1, 0);
+        else            ui_update_kiro(k[0] | 0, k[1] | 0);
+        return true;
+    }
+    if (!doc["l"].isNull()) {
+        JsonArray src = doc["l"].as<JsonArray>();
+        if (src.isNull()) {                 // {"l": 0}: the match ended
+            ui_update_live(nullptr);
+            return true;
+        }
+        LiveMatch m = {};
+        strlcpy(m.home, src[0] | "?", sizeof(m.home));
+        strlcpy(m.away, src[1] | "?", sizeof(m.away));
+        m.home_goals = src[2] | 0;
+        m.away_goals = src[3] | 0;
+        strlcpy(m.clock, src[4] | "", sizeof(m.clock));
+        strlcpy(m.phase, src[5] | "", sizeof(m.phase));
+        strlcpy(m.competition, src[6] | "", sizeof(m.competition));
+        ui_update_live(&m);
+        return true;
+    }
+    static const struct { const char* key; quote_table_t table; } QUOTE_KEYS[] = {
+        {"x", QUOTES_CRYPTO},
+        {"b", QUOTES_STOCKS},
+    };
+    for (const auto& q : QUOTE_KEYS) {
+        if (!doc[q.key].is<JsonArray>()) continue;
+        QuoteRow rows[QUOTE_PAGE_ROWS] = {};
+        int n = 0;
+        for (JsonArray src : doc[q.key].as<JsonArray>()) {
+            if (n >= QUOTE_PAGE_ROWS) break;
+            // [cell, ..., change %]: every element but the last is a string cell.
+            const int last = (int)src.size() - 1;
+            for (int c = 0; c < last && c < QUOTE_CELLS; c++) {
+                strlcpy(rows[n].cells[c], src[c] | "", sizeof(rows[n].cells[c]));
+            }
+            rows[n].change_pct = last >= 0 ? (src[last] | 0.0f) : 0.0f;
+            n++;
+        }
+        ui_update_quotes(q.table, rows, doc["o"] | 0, n, doc["n"] | n);
+        if (doc["i"].is<JsonArray>()) {
+            ui_update_stock_index(doc["i"][0] | "---", doc["i"][1] | 0.0f);
+        }
+        return true;
+    }
+    return false;
+}
+
 // ---- Serial command buffer ----
 #define CMD_BUF_SIZE 64
 static char cmd_buf[CMD_BUF_SIZE];
@@ -194,6 +313,11 @@ void setup() {
 
     board_init();
 
+    // Bring the BLE controller up before the display: its interrupt allocation
+    // runs on the tiny ipc0 stack, and RGB-panel interrupts landing mid-setup
+    // overflowed it (boot loop on the Guition 4848S040).
+    ble_init();
+
     display_hal_init();
     display_hal_begin();
     idle_init();        // takes over panel brightness and starts the idle timer
@@ -209,6 +333,17 @@ void setup() {
     const int H = board_caps().height;
 
     lv_init();
+#if defined(BOARD_HAS_PSRAM) && LV_MEM_POOL_EXPAND_SIZE > 0
+    // The screens outgrew LV_MEM_SIZE (scrollable lists keep every row as
+    // objects). Give LVGL a second pool in PSRAM instead of eating internal RAM
+    // the BLE stack needs; the built-in allocator spills into it when the
+    // internal pool is full.
+    {
+        static const size_t LV_PSRAM_POOL = LV_MEM_POOL_EXPAND_SIZE;   // 256 KB on guition/sim
+        void* pool = heap_caps_malloc(LV_PSRAM_POOL, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (pool) lv_mem_add_pool(pool, LV_PSRAM_POOL);
+    }
+#endif
     lv_tick_set_cb(my_tick);
 
     buf1 = (uint16_t*)heap_caps_malloc(W * BUF_LINES * 2, LV_BUF_CAPS);
@@ -225,7 +360,6 @@ void setup() {
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, my_touch_cb);
 
-    ble_init();
     input_hal_init();
 
     ui_init();
@@ -372,7 +506,10 @@ void loop() {
     check_serial_cmd();
 
     if (ble_has_data()) {
-        if (parse_json(ble_get_data(), &usage)) {
+        const char* json = ble_get_data();
+        if (handle_extra_json(json)) {
+            ble_send_ack();
+        } else if (parse_json(json, &usage)) {
             int g_before = usage_rate_group();
             bool session_reset = usage_rate_sample(usage.session_pct);
             int g_after = usage_rate_group();

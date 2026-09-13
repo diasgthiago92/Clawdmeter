@@ -17,5 +17,6 @@ int main(void) {
         sim_pump();
         loop();
     }
+    sim_display_record_stop();
     return 0;
 }

@@ -1,6 +1,7 @@
 #include "board.h"
 #include "../../hal/display_hal.h"
 #include "sim_platform.h"
+#include <Arduino.h>
 #include <SDL.h>
 #include <stdio.h>
 #include <string.h>
@@ -96,4 +97,43 @@ void sim_display_screenshot(const char* path) {
     if (s && SDL_SaveBMP(s, path) == 0) printf("screenshot: %s\n", path);
     else printf("screenshot failed: %s\n", SDL_GetError());
     if (s) SDL_FreeSurface(s);
+}
+
+// ---- Demo recording ----
+static FILE*    rec = NULL;
+static bool     rec_checked = false;
+static uint32_t rec_frame_ms = 0, rec_next_ms = 0;
+
+void sim_display_record_tick(void) {
+    if (!rec_checked) {
+        rec_checked = true;
+        const char* out = getenv("SIM_RECORD");
+        if (!out || !*out) return;
+        const char* fps_env = getenv("SIM_RECORD_FPS");
+        int fps = fps_env ? atoi(fps_env) : 15;
+        if (fps <= 0) fps = 15;
+        rec_frame_ms = 1000 / fps;
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd),
+                 "ffmpeg -loglevel error -y -f rawvideo -pixel_format rgb565le -video_size %dx%d "
+                 "-framerate %d -i - -vf scale=%d:%d:flags=neighbor -c:v libx264 -pix_fmt yuv420p "
+                 "-crf 18 -movflags +faststart '%s'",
+                 LCD_WIDTH, LCD_HEIGHT, fps, LCD_WIDTH * 2, LCD_HEIGHT * 2, out);
+        rec = popen(cmd, "w");
+        if (rec) printf("[sim] recording %s at %d fps\n", out, fps);
+        rec_next_ms = millis();
+    }
+    if (!rec) return;
+    // Wall-clock paced: a slow loop repeats the frame rather than speeding up the video.
+    while (millis() >= rec_next_ms) {
+        fwrite(shadow, 2, (size_t)LCD_WIDTH * LCD_HEIGHT, rec);
+        rec_next_ms += rec_frame_ms;
+    }
+}
+
+void sim_display_record_stop(void) {
+    if (!rec) return;
+    pclose(rec);
+    rec = NULL;
+    printf("[sim] recording finished\n");
 }

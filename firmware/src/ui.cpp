@@ -36,6 +36,9 @@ struct Layout {
     int16_t usage_panel_gap;
     int16_t usage_bar_y;
     int16_t usage_reset_y;
+    int16_t usage_bar_h;
+    const lv_font_t* usage_reset_font;
+    bool    kiro_panel;              // room for a third (Kiro) usage panel; else Kiro goes on the status line
     int16_t bar_h;
     int16_t panel_pad_x, panel_pad_y;
     int16_t pill_pad_x, pill_pad_y;
@@ -46,6 +49,9 @@ struct Layout {
     const lv_font_t* reset_font;     // "Resets in ..." line
     const lv_font_t* pace_font;      // enterprise "Under/On/Over pace" line
     const lv_font_t* anim_font;      // animated status line
+    const lv_font_t* axis_font;      // chart axis + footnotes on history/models screens
+    const lv_font_t* table_font;     // quote table rows (crypto)
+    const lv_font_t* table_font_dense; // one step smaller, for tables with a name column (B3)
     int16_t anim_y;                  // status line offset from bottom
     bool    small_icons;             // 40px logo + 24px battery (vs 80/48) on small screens
     int16_t title_nudge;             // title x-shift balancing the corner logo
@@ -81,6 +87,9 @@ static void compute_layout(const BoardCaps& c) {
     // Values shared by the two original breakpoints; the small branch below
     // overrides them wholesale.
     L.bar_h = 24;
+    L.usage_bar_h = 24;
+    L.usage_reset_font = &font_styrene_28;
+    L.kiro_panel = false;
     L.panel_pad_x = 16;
     L.panel_pad_y = 12;
     L.pill_pad_x = 18;
@@ -106,10 +115,18 @@ static void compute_layout(const BoardCaps& c) {
     if (c.height >= 460) {
         // Large layout — tuned for 480x480 (AMOLED-2.16).
         L.content_y = 100;
-        L.usage_panel_h = 150;
-        L.usage_panel_gap = 16;
-        L.usage_bar_y = 56;
-        L.usage_reset_y = 94;
+        L.axis_font = &font_styrene_20;
+        L.table_font = &font_styrene_24;
+        L.table_font_dense = &font_styrene_20;
+        // Three shorter panels (Sessão, Semanal, Kiro) fill the space the
+        // status line used to share.
+        L.usage_panel_h = 112;
+        L.usage_panel_gap = 10;
+        L.usage_bar_y = 50;
+        L.usage_reset_y = 64;
+        L.usage_bar_h = 12;
+        L.usage_reset_font = &font_styrene_20;
+        L.kiro_panel = true;
         L.bt_info_panel_h = 160;
         L.bt_reset_zone_h = 110;
         L.bt_title_font    = &font_tiempos_56;
@@ -120,6 +137,9 @@ static void compute_layout(const BoardCaps& c) {
     } else if (c.height >= 300) {
         // Compact layout — tuned for 368x448 (AMOLED-1.8).
         L.content_y = 85;
+        L.axis_font = &font_styrene_16;
+        L.table_font = &font_styrene_20;
+        L.table_font_dense = &font_styrene_16;
         L.usage_panel_h = 130;
         L.usage_panel_gap = 12;
         L.usage_bar_y = 48;
@@ -138,6 +158,9 @@ static void compute_layout(const BoardCaps& c) {
         L.margin = 8;
         L.title_y = 4;
         L.content_y = 44;
+        L.axis_font = &font_styrene_12;
+        L.table_font = &font_styrene_12;
+        L.table_font_dense = &font_styrene_12;
         L.usage_panel_h = 74;
         L.usage_panel_gap = 6;
         L.usage_bar_y = 30;
@@ -189,6 +212,13 @@ static void compute_layout(const BoardCaps& c) {
 #define COL_AMBER     THEME_AMBER
 #define COL_RED       THEME_RED
 #define COL_BAR_BG    THEME_BAR_BG
+#define COL_KIRO      lv_color_hex(0x9046FF)   // Kiro brand purple; Claude stays COL_ACCENT
+static const char* const COL_HEX_CLAUDE = "d97757";
+// Theme accent follows the character on screen: Claude orange, Kiro purple.
+// Data colors (Claude vs Kiro series) stay fixed and don't use these.
+static lv_color_t  accent_color = lv_color_hex(0xd97757);
+static const char* accent_hex   = "d97757";
+static const char* const COL_HEX_KIRO   = "9046ff";
 
 // ---- Usage screen widgets (single non-splash view) ----
 static lv_obj_t* usage_container;
@@ -213,9 +243,16 @@ static lv_obj_t* panel_session = nullptr;
 static lv_obj_t* panel_weekly = nullptr;
 // Enterprise-only widgets inside panel_session
 static lv_obj_t* lbl_session_pct_sym = nullptr;  // "%" in smaller font
-static lv_obj_t* lbl_spending_desc = nullptr;     // "of your monthly budget"
-static lv_obj_t* lbl_spending_status = nullptr;   // "Under pace" / "On pace" / "Over pace"
-static lv_obj_t* lbl_anim;      // status line: connection state + whimsical idle
+static lv_obj_t* lbl_spending_desc = nullptr;     // "do orçamento mensal"
+static lv_obj_t* lbl_spending_status = nullptr;   // "Abaixo do ritmo" / "No ritmo" / "Acima do ritmo"
+static lv_obj_t* lbl_anim;      // status line: connection state + whimsical idle, or Kiro credits
+static int kiro_pct = -1;       // Kiro credit usage from the daemon; < 0 = none
+static int kiro_reset_days = 0;
+static lv_obj_t* panel_kiro = nullptr;   // third usage panel (large layout only)
+static lv_obj_t* lbl_kiro_pct;
+static lv_obj_t* lbl_kiro_label;
+static lv_obj_t* bar_kiro;
+static lv_obj_t* lbl_kiro_reset;
 
 // ---- Battery indicator (shared, on top) ----
 static lv_obj_t* battery_img;
@@ -236,6 +273,35 @@ static const uint32_t DATA_FRESH_MS = 90000;  // usage counts as "live" within t
 // ---- Shared ----
 static lv_image_dsc_t logo_dsc;
 static screen_t current_screen = SCREEN_USAGE;
+
+// Auto-rotation: each screen's share of a 2-minute cycle. Clawd (splash) is
+// not in the cycle — it only shows for a moment after boot or when tapped to.
+struct RotationStep { screen_t screen; uint32_t ms; };
+static const RotationStep ROTATION[] = {
+    {SCREEN_USAGE,   48000},   // 40%
+    {SCREEN_AGENDA,  12000},
+    {SCREEN_HISTORY, 12000},   // 10%
+    {SCREEN_MODELS,  12000},   // 10%
+    {SCREEN_ROUTINES, 12000},
+    {SCREEN_CRYPTO,  24000},   // 20%
+    {SCREEN_STOCKS,  12000},   // 10%
+    {SCREEN_VASCO,   12000},   // 10%
+};
+#define ROTATION_COUNT        (sizeof(ROTATION) / sizeof(ROTATION[0]))
+#ifndef ROTATION_OFFCYCLE_MS
+#define ROTATION_OFFCYCLE_MS  10000   // dwell for screens outside the cycle (splash)
+#endif
+#define ROTATION_TAP_PAUSE_MS 60000   // a tap holds the chosen screen this long
+static uint32_t screen_shown_ms = 0;
+static uint32_t tap_ms = 0;
+static bool     tap_hold = false;
+
+static uint32_t rotation_dwell_ms(screen_t screen) {
+    for (const auto& step : ROTATION) {
+        if (step.screen == screen) return step.ms;
+    }
+    return ROTATION_OFFCYCLE_MS;
+}
 static bool     s_ble_connected = false;   // cached BLE connection state
 static uint32_t connected_at_ms = 0;       // when we last entered CONNECTED ("Connected" dwell)
 
@@ -259,60 +325,48 @@ static const uint16_t spinner_ms[SPINNER_COUNT] = {
 };
 
 static const char* const anim_messages[] = {
-    "Accomplishing", "Elucidating", "Perusing",
-    "Actioning", "Enchanting", "Philosophising",
-    "Actualizing", "Envisioning", "Pondering",
-    "Baking", "Finagling", "Pontificating",
-    "Booping", "Flibbertigibbeting", "Processing",
-    "Brewing", "Forging", "Puttering",
-    "Calculating", "Forming", "Puzzling",
-    "Cerebrating", "Frolicking", "Reticulating",
-    "Channelling", "Generating", "Ruminating",
-    "Churning", "Germinating", "Scheming",
-    "Clauding", "Hatching", "Schlepping",
-    "Coalescing", "Herding", "Shimmying",
-    "Cogitating", "Honking", "Shucking",
-    "Combobulating", "Hustling", "Simmering",
-    "Computing", "Ideating", "Smooshing",
-    "Concocting", "Imagining", "Spelunking",
-    "Conjuring", "Incubating", "Spinning",
-    "Considering", "Inferring", "Stewing",
-    "Contemplating", "Jiving", "Sussing",
-    "Cooking", "Manifesting", "Synthesizing",
-    "Crafting", "Marinating", "Thinking",
-    "Creating", "Meandering", "Tinkering",
-    "Crunching", "Moseying", "Transmuting",
-    "Deciphering", "Mulling", "Unfurling",
-    "Deliberating", "Mustering", "Unravelling",
-    "Determining", "Musing", "Vibing",
-    "Discombobulating", "Noodling", "Wandering",
-    "Divining", "Percolating", "Whirring",
-    "Doing", "Wibbling",
-    "Effecting", "Wizarding",
-    "Working", "Wrangling",
+    "Pensando", "Ruminando", "Matutando",
+    "Cozinhando", "Fermentando", "Maquinando",
+    "Calculando", "Arquitetando", "Ponderando",
+    "Refletindo", "Elucubrando", "Filosofando",
+    "Tramando", "Tricotando", "Processando",
+    "Destrinchando", "Garimpando", "Lapidando",
+    "Decifrando", "Conjurando", "Imaginando",
+    "Incubando", "Idealizando", "Burilando",
+    "Temperando", "Marinando", "Refogando",
+    "Forjando", "Moldando", "Esculpindo",
+    "Clauding", "Chocando", "Germinando",
+    "Deliberando", "Cogitando", "Especulando",
+    "Sintetizando", "Compilando", "Depurando",
+    "Vagueando", "Divagando", "Perambulando",
+    "Borbulhando", "Fervilhando", "Remexendo",
+    "Desvendando", "Investigando", "Farejando",
+    "Rabiscando", "Esboçando", "Tecendo",
+    "Aprontando", "Caprichando", "Lustrando",
+    "Mastigando", "Digerindo", "Saboreando",
+    "Zanzando", "Cirandando", "Rodopiando",
+    "Encantando", "Enfeitiçando", "Alquimiando",
+    "Trabalhando", "Labutando", "Batucando",
 };
 #define ANIM_MSG_COUNT (sizeof(anim_messages) / sizeof(anim_messages[0]))
 
-static lv_color_t pct_color(float pct) {
-    if (pct >= 80.0f) return COL_RED;
-    if (pct >= 50.0f) return COL_AMBER;
-    return COL_GREEN;
-}
 
 static void format_reset_time(int mins, char* buf, size_t len) {
     if (mins < 0) {
         snprintf(buf, len, "---");
     } else if (mins < 60) {
-        snprintf(buf, len, "Resets in %dm", mins);
+        snprintf(buf, len, "Reinicia em %d min", mins);
     } else if (mins < 1440) {
-        snprintf(buf, len, "Resets in %dh %dm", mins / 60, mins % 60);
+        snprintf(buf, len, "Reinicia em %dh %02dmin", mins / 60, mins % 60);
     } else {
-        snprintf(buf, len, "Resets in %dd %dh", mins / 1440, (mins % 1440) / 60);
+        snprintf(buf, len, "Reinicia em %dd %dh", mins / 1440, (mins % 1440) / 60);
     }
 }
 
 // Forward decls — callbacks defined near ui_show_screen below
 static void global_click_cb(lv_event_t* e);
+static void make_screen_draggable(lv_obj_t* c);
+static void screen_pressed_cb(lv_event_t* e);
 
 static lv_obj_t* make_panel(lv_obj_t* parent, int x, int y, int w, int h) {
     lv_obj_t* panel = lv_obj_create(parent);
@@ -397,25 +451,25 @@ static lv_obj_t* make_usage_panel(lv_obj_t* parent, int y, const char* pill_text
     lv_label_set_text(*out_pct, "---%");
     lv_obj_set_style_text_font(*out_pct, L.pct_font, 0);
     lv_obj_set_style_text_color(*out_pct, COL_TEXT, 0);
-    lv_obj_set_pos(*out_pct, 0, 0);
+    lv_obj_set_pos(*out_pct, 0, L.kiro_panel ? -6 : 0);
 
     *out_pill = make_pill(panel, pill_text);
     lv_obj_align(*out_pill, LV_ALIGN_TOP_RIGHT, 0, 1);
 
     *out_bar = make_bar(panel, 0, L.usage_bar_y,
-                        L.content_w - 2 * L.panel_pad_x, L.bar_h);
+                        L.content_w - 2 * L.panel_pad_x, L.usage_bar_h);
 
     *out_reset = lv_label_create(panel);
     lv_label_set_text(*out_reset, "---");
-    lv_obj_set_style_text_font(*out_reset, L.reset_font, 0);
+    lv_obj_set_style_text_font(*out_reset, L.usage_reset_font, 0);
     lv_obj_set_style_text_color(*out_reset, COL_DIM, 0);
     lv_obj_set_pos(*out_reset, 0, L.usage_reset_y);
 
     return panel;
 }
 
-// Pairing hint — shown when disconnected so the screen isn't empty and the
-// user knows how to (re)pair. Wording matches the 3-second release gesture.
+// Pairing hint — shown when disconnected so the screen isn't empty. Pairing
+// from the host's Bluetooth settings works on every board, buttons or not.
 static void build_pair_group(lv_obj_t* parent) {
     pair_group = lv_obj_create(parent);
     lv_obj_set_size(pair_group, L.scr_w, L.scr_h - L.content_y);
@@ -427,19 +481,19 @@ static void build_pair_group(lv_obj_t* parent) {
     lv_obj_add_flag(pair_group, LV_OBJ_FLAG_EVENT_BUBBLE);
 
     lv_obj_t* l1 = lv_label_create(pair_group);
-    lv_label_set_text(l1, "To pair");
+    lv_label_set_text(l1, "Para parear");
     lv_obj_set_style_text_font(l1, L.bt_status_font, 0);
     lv_obj_set_style_text_color(l1, COL_TEXT, 0);
     lv_obj_align(l1, LV_ALIGN_TOP_MID, 0, L.pair_y1);
 
     lv_obj_t* l2 = lv_label_create(pair_group);
-    lv_label_set_text(l2, "hold the power button");
+    lv_label_set_text(l2, "conecte ao Clawdmeter");
     lv_obj_set_style_text_font(l2, L.bt_device_font, 0);
     lv_obj_set_style_text_color(l2, COL_DIM, 0);
     lv_obj_align(l2, LV_ALIGN_TOP_MID, 0, L.pair_y2);
 
     lv_obj_t* l3 = lv_label_create(pair_group);
-    lv_label_set_text(l3, "for 3 seconds, then release");
+    lv_label_set_text(l3, "no Bluetooth do computador");
     lv_obj_set_style_text_font(l3, L.bt_device_font, 0);
     lv_obj_set_style_text_color(l3, COL_DIM, 0);
     lv_obj_align(l3, LV_ALIGN_TOP_MID, 0, L.pair_y3);
@@ -476,11 +530,11 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_set_style_bg_opa(usage_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(usage_container, 0, 0);
     lv_obj_set_style_pad_all(usage_container, 0, 0);
-    lv_obj_clear_flag(usage_container, LV_OBJ_FLAG_SCROLLABLE);
+    make_screen_draggable(usage_container);
     lv_obj_add_event_cb(usage_container, global_click_cb, LV_EVENT_CLICKED, NULL);
 
     lbl_title = lv_label_create(usage_container);
-    lv_label_set_text(lbl_title, "Usage");
+    lv_label_set_text(lbl_title, "Uso");
     lv_obj_set_style_text_font(lbl_title, L.title_font, 0);
     lv_obj_set_style_text_color(lbl_title, COL_TEXT, 0);
     // The nudge balances the corner logo on the left; smaller on small
@@ -498,7 +552,7 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_clear_flag(usage_group, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(usage_group, LV_OBJ_FLAG_EVENT_BUBBLE);
 
-    panel_session = make_usage_panel(usage_group, L.content_y, "Current",
+    panel_session = make_usage_panel(usage_group, L.content_y, "Claude - Daily",
                      &lbl_session_pct, &lbl_session_label,
                      &bar_session, &lbl_session_reset);
 
@@ -510,7 +564,7 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_add_flag(lbl_session_pct_sym, LV_OBJ_FLAG_HIDDEN);
 
     lbl_spending_desc = lv_label_create(panel_session);
-    lv_label_set_text(lbl_spending_desc, "of your monthly budget");
+    lv_label_set_text(lbl_spending_desc, "do orçamento mensal");
     lv_obj_set_style_text_font(lbl_spending_desc, L.reset_font, 0);
     lv_obj_set_style_text_color(lbl_spending_desc, COL_DIM, 0);
     lv_obj_set_pos(lbl_spending_desc, 0, L.usage_reset_y);
@@ -523,11 +577,31 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_add_flag(lbl_spending_status, LV_OBJ_FLAG_HIDDEN);
 
     panel_weekly = make_usage_panel(usage_group,
-                     L.content_y + L.usage_panel_h + L.usage_panel_gap, "Weekly",
+                     L.content_y + L.usage_panel_h + L.usage_panel_gap, "Claude - Weekly",
                      &lbl_weekly_pct, &lbl_weekly_label,
                      &bar_weekly, &lbl_weekly_reset);
     // Recolor enabled so enterprise period box can color pace and reset separately
     lv_label_set_recolor(lbl_weekly_reset, true);
+
+    if (L.kiro_panel) {
+        panel_kiro = make_usage_panel(usage_group,
+                         L.content_y + 2 * (L.usage_panel_h + L.usage_panel_gap), "Kiro - Monthly",
+                         &lbl_kiro_pct, &lbl_kiro_label, &bar_kiro, &lbl_kiro_reset);
+        lv_label_set_text(lbl_kiro_reset, "Sem dados do Kiro");
+    }
+
+    // Brand colors: the number and bar in the tool's primary color, text in white.
+    lv_obj_set_style_text_color(lbl_session_pct, COL_ACCENT, 0);
+    lv_obj_set_style_text_color(lbl_weekly_pct, COL_ACCENT, 0);
+    lv_obj_set_style_text_color(lbl_session_reset, COL_TEXT, 0);
+    lv_obj_set_style_text_color(lbl_weekly_reset, COL_TEXT, 0);
+    lv_obj_set_style_bg_color(bar_session, COL_ACCENT, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(bar_weekly, COL_ACCENT, LV_PART_INDICATOR);
+    if (panel_kiro) {
+        lv_obj_set_style_text_color(lbl_kiro_pct, COL_KIRO, 0);
+        lv_obj_set_style_text_color(lbl_kiro_reset, COL_TEXT, 0);
+        lv_obj_set_style_bg_color(bar_kiro, COL_KIRO, LV_PART_INDICATOR);
+    }
 
     build_pair_group(usage_container);
     build_idle_group(usage_container);
@@ -536,8 +610,1023 @@ static void init_usage_screen(lv_obj_t* scr) {
     lbl_anim = lv_label_create(usage_container);
     lv_label_set_text(lbl_anim, "");
     lv_obj_set_style_text_font(lbl_anim, L.anim_font, 0);
-    lv_obj_set_style_text_color(lbl_anim, COL_ACCENT, 0);
+    lv_obj_set_style_text_color(lbl_anim, accent_color, 0);
     lv_obj_align(lbl_anim, LV_ALIGN_BOTTOM_MID, 0, L.anim_y);
+}
+
+// ======== History / Models screens ========
+
+static lv_obj_t* history_container;
+// Stacked hourly bars: Claude (bottom, orange) + Kiro (top, purple).
+#define HISTORY_HOURS 24
+static lv_obj_t* history_claude_bar[HISTORY_HOURS];
+static lv_obj_t* history_kiro_bar[HISTORY_HOURS];
+static int       history_plot_h = 0;
+static lv_obj_t* lbl_history_now;
+static lv_obj_t* lbl_history_peak;
+static lv_obj_t* lbl_history_now_unit;   // "tokens do Claude", under the Claude number
+static lv_obj_t* lbl_history_peak_unit;  // "requisições do Kiro", under the Kiro number
+static lv_obj_t* lbl_history_empty;
+
+static lv_obj_t* models_container;
+static lv_obj_t* lbl_models_total;
+static lv_obj_t* lbl_models_empty;
+#define MODEL_ROWS (MODELS_MAX + 1)     // Claude models + the Kiro row
+#define MODEL_VISIBLE_ROWS 4
+static lv_obj_t* model_rows[MODEL_ROWS];
+static lv_obj_t* lbl_model_name[MODEL_ROWS];
+static lv_obj_t* lbl_model_tokens[MODEL_ROWS];
+static lv_obj_t* bar_model[MODEL_ROWS];
+
+// Titles sit between the mascot (left) and the battery (right). One that is too
+// wide for the title font drops to Tiempos 34 inside that band, wrapping onto
+// two lines if it still doesn't fit.
+#define TITLE_MASCOT_W 90
+static void fit_screen_title(lv_obj_t* t, const char* text) {
+    const int left  = L.margin + TITLE_MASCOT_W;
+    const int right = L.scr_w - L.margin - (board_caps().has_battery ? L.batt_w + 10 : 0);
+    const int band_w = right - left;
+    lv_obj_set_style_text_font(t, L.title_font, 0);
+    lv_point_t size;
+    lv_text_get_size(&size, text, L.title_font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    if (size.x <= L.scr_w - 2 * left) {
+        lv_obj_align(t, LV_ALIGN_TOP_MID, L.title_nudge, L.title_y);
+        return;
+    }
+    const lv_font_t* small = &font_tiempos_34;
+    const int mid_y = L.title_y + lv_font_get_line_height(L.title_font) / 2;
+    lv_obj_set_style_text_font(t, small, 0);
+    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_line_space(t, -6, 0);   // keep two lines clear of the panel below
+    lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(t, band_w);
+    lv_obj_update_layout(t);
+    lv_obj_set_pos(t, left, mid_y - lv_obj_get_height(t) / 2);
+}
+
+// Project rule: every screen drags up and down with a finger. Screens whose
+// content fits just stretch elastically and spring back; lists scroll first and
+// hand the drag to the screen at their ends (LVGL scroll chaining).
+static lv_point_t press_point;           // where the current touch started
+
+static void screen_pressed_cb(lv_event_t* e) {
+    (void)e;
+    lv_indev_t* indev = lv_indev_active();
+    if (indev) lv_indev_get_point(indev, &press_point);
+}
+
+static void make_screen_draggable(lv_obj_t* c) {
+    lv_obj_add_flag(c, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC |
+                                       LV_OBJ_FLAG_SCROLL_MOMENTUM));
+    lv_obj_set_scroll_dir(c, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(c, LV_SCROLLBAR_MODE_OFF);
+    // LVGL only drags an object that has some scroll range: a 1 px taller
+    // invisible spacer gives every screen that range, so a swipe rubber-bands
+    // the screen instead of falling through as a tap.
+    lv_obj_t* spacer = lv_obj_create(c);
+    lv_obj_remove_style_all(spacer);
+    lv_obj_set_size(spacer, 1, L.scr_h + 1);
+    lv_obj_set_pos(spacer, 0, 0);
+    lv_obj_clear_flag(spacer, (lv_obj_flag_t)(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+    lv_obj_add_event_cb(c, screen_pressed_cb, LV_EVENT_PRESSED, NULL);
+}
+
+static lv_obj_t* make_screen_container(lv_obj_t* scr, const char* title) {
+    lv_obj_t* c = lv_obj_create(scr);
+    lv_obj_set_size(c, L.scr_w, L.scr_h);
+    lv_obj_set_pos(c, 0, 0);
+    lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(c, 0, 0);
+    lv_obj_set_style_pad_all(c, 0, 0);
+    make_screen_draggable(c);
+    lv_obj_add_event_cb(c, global_click_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t* t = lv_label_create(c);
+    lv_label_set_text(t, title);
+    lv_obj_set_style_text_color(t, COL_TEXT, 0);
+    fit_screen_title(t, title);
+
+    lv_obj_add_flag(c, LV_OBJ_FLAG_HIDDEN);
+    return c;
+}
+
+static lv_obj_t* make_dim_label(lv_obj_t* parent, const lv_font_t* font, const char* text) {
+    lv_obj_t* l = lv_label_create(parent);
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_font(l, font, 0);
+    lv_obj_set_style_text_color(l, COL_DIM, 0);
+    return l;
+}
+
+// Pt-BR compact count: 950, 12 mil, 3,4 mi, 1,2 bi.
+static void format_tokens(uint64_t t, char* buf, size_t len) {
+    if (t >= 1000000000ULL)   snprintf(buf, len, "%.1f bi", t / 1e9);
+    else if (t >= 1000000ULL) snprintf(buf, len, "%.1f mi", t / 1e6);
+    else if (t >= 1000ULL)    snprintf(buf, len, "%llu mil", (unsigned long long)(t / 1000));
+    else                      snprintf(buf, len, "%llu", (unsigned long long)t);
+    for (char* p = buf; *p; p++) if (*p == '.') *p = ',';
+}
+
+// Unit captions sit under each number: "tokens" left, "requisições" right.
+static void history_place_units(void) {
+    const int y = lv_font_get_line_height(L.pct_font) - 6;
+    lv_obj_align(lbl_history_now_unit, LV_ALIGN_TOP_LEFT, 0, y);
+    lv_obj_align(lbl_history_peak_unit, LV_ALIGN_TOP_RIGHT, 0, y);
+    lv_obj_align(lbl_history_peak, LV_ALIGN_TOP_RIGHT, 0, 0);
+}
+
+static void init_history_screen(lv_obj_t* scr) {
+    history_container = make_screen_container(scr, "Consumo - 24\xC2\xA0horas");   // no-break space keeps "24 horas" together
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(history_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+
+    // Header: Claude tokens in 24h (orange, left) and Kiro requests (purple, right).
+    lbl_history_now = lv_label_create(panel);
+    lv_label_set_text(lbl_history_now, "---");
+    lv_obj_set_style_text_font(lbl_history_now, L.pct_font, 0);
+    lv_obj_set_style_text_color(lbl_history_now, COL_ACCENT, 0);
+    lv_obj_set_pos(lbl_history_now, 0, 0);
+
+    lbl_history_peak = lv_label_create(panel);
+    lv_label_set_text(lbl_history_peak, "---");
+    lv_obj_set_style_text_font(lbl_history_peak, L.pct_font, 0);
+    lv_obj_set_style_text_color(lbl_history_peak, COL_KIRO, 0);
+
+    lbl_history_now_unit = lv_label_create(panel);
+    lv_label_set_text(lbl_history_now_unit, "tokens do Claude");
+    lv_obj_set_style_text_font(lbl_history_now_unit, L.axis_font, 0);
+    lv_obj_set_style_text_color(lbl_history_now_unit, COL_TEXT, 0);
+
+    lbl_history_peak_unit = lv_label_create(panel);
+    lv_label_set_text(lbl_history_peak_unit, "requisições do Kiro");
+    lv_obj_set_style_text_font(lbl_history_peak_unit, L.axis_font, 0);
+    lv_obj_set_style_text_color(lbl_history_peak_unit, COL_TEXT, 0);
+    history_place_units();
+
+    const int axis_h  = lv_font_get_line_height(L.axis_font);
+    const int chart_y = lv_font_get_line_height(L.pct_font) - 6 + axis_h + L.panel_pad_y / 2;
+    const int chart_h = inner_h - chart_y - axis_h - 6;
+
+    lv_obj_t* plot = lv_obj_create(panel);
+    lv_obj_set_pos(plot, 0, chart_y);
+    lv_obj_set_size(plot, inner_w, chart_h);
+    lv_obj_set_style_bg_color(plot, COL_BG, 0);
+    lv_obj_set_style_bg_opa(plot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(plot, 0, 0);
+    lv_obj_set_style_radius(plot, 6, 0);
+    lv_obj_set_style_pad_all(plot, 0, 0);
+    lv_obj_clear_flag(plot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(plot, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+    const int pad = 6;
+    history_plot_h = chart_h - 2 * pad;
+    const int slot = (inner_w - 2 * pad) / HISTORY_HOURS;
+    const int bar_w = slot - slot / 4;
+    const int left = (inner_w - slot * HISTORY_HOURS) / 2 + (slot - bar_w) / 2;
+    for (int i = 0; i < HISTORY_HOURS; i++) {
+        for (int k = 0; k < 2; k++) {
+            lv_obj_t* b = lv_obj_create(plot);
+            lv_obj_set_style_bg_color(b, k ? COL_KIRO : COL_ACCENT, 0);
+            lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(b, 0, 0);
+            lv_obj_set_style_radius(b, 0, 0);
+            lv_obj_set_style_pad_all(b, 0, 0);
+            lv_obj_clear_flag(b, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+            lv_obj_set_pos(b, left + i * slot, pad + history_plot_h);
+            lv_obj_set_size(b, bar_w, 0);
+            lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
+            (k ? history_kiro_bar : history_claude_bar)[i] = b;
+        }
+    }
+
+    lbl_history_empty = make_dim_label(panel, L.reset_font, "Coletando dados...");
+    lv_obj_align_to(lbl_history_empty, plot, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t* a0 = make_dim_label(panel, L.axis_font, "-24h");
+    lv_obj_align(a0, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_t* legend = make_dim_label(panel, L.axis_font, "");
+    lv_label_set_recolor(legend, true);
+    lv_label_set_text_fmt(legend, "#%s Claude tokens#  #%s Kiro req#", COL_HEX_CLAUDE, COL_HEX_KIRO);
+    lv_obj_align(legend, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_t* a2 = make_dim_label(panel, L.axis_font, "agora");
+    lv_obj_align(a2, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+}
+
+// ======== Scrollable lists ========
+// Project rule: any list that can hold more items than fit on screen is one
+// finger-scrollable list (no pages, no dropped items). Rows live in a clipped
+// box under a fixed header; a drag scrolls and pauses rotation, a short tap
+// still bubbles up to the screen's left/right navigation. Unattended, the list
+// glides from its focus row to the end within the screen's rotation dwell.
+struct ScrollList {
+    lv_obj_t* box;
+    int       row_h;
+    int       rows;          // rows currently in the list
+    int       focus;         // row brought to the top when the screen opens
+    int       start_y;
+    uint32_t  shown_ms;
+    uint32_t  touched_ms;    // last finger contact (stops the glide)
+};
+
+static void scroll_list_pressed_cb(lv_event_t* e) {
+    ScrollList* l = (ScrollList*)lv_event_get_user_data(e);
+    l->touched_ms = lv_tick_get();
+    tap_ms = l->touched_ms;            // reading the list pauses rotation like a tap
+    tap_hold = true;
+}
+
+static lv_obj_t* scroll_list_create(ScrollList* l, lv_obj_t* parent, int x, int y, int w,
+                                    int visible_rows, int row_h) {
+    l->row_h = row_h;
+    l->box = lv_obj_create(parent);
+    lv_obj_set_pos(l->box, x, y);
+    lv_obj_set_size(l->box, w, row_h * visible_rows);
+    lv_obj_set_style_bg_opa(l->box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(l->box, 0, 0);
+    lv_obj_set_style_pad_all(l->box, 0, 0);
+    lv_obj_set_scroll_dir(l->box, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(l->box, LV_SCROLLBAR_MODE_ACTIVE);
+    lv_obj_add_flag(l->box, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_add_event_cb(l->box, scroll_list_pressed_cb, LV_EVENT_PRESSED, l);
+    return l->box;
+}
+
+static int scroll_list_max_y(const ScrollList* l) {
+    const int max_y = l->row_h * l->rows - lv_obj_get_height(l->box);
+    return max_y > 0 ? max_y : 0;
+}
+
+static void scroll_list_show(ScrollList* l) {
+    if (!l->box) return;
+    l->shown_ms = lv_tick_get();
+    l->touched_ms = 0;
+    int y = l->focus * l->row_h;
+    if (y > scroll_list_max_y(l)) y = scroll_list_max_y(l);
+    l->start_y = y;
+    lv_obj_scroll_to_y(l->box, y, LV_ANIM_OFF);
+}
+
+static void scroll_list_tick(ScrollList* l, uint32_t dwell_ms) {
+    if (!l->box) return;
+    const uint32_t now = lv_tick_get();
+    if (l->touched_ms && now - l->touched_ms < ROTATION_TAP_PAUSE_MS) return;
+    const int max_y = scroll_list_max_y(l);
+    const uint32_t start = 2500;
+    const uint32_t span = dwell_ms > start + 5500 ? dwell_ms - start - 1500 : 4000;
+    const uint32_t elapsed = now - l->shown_ms;
+    if (max_y <= l->start_y || elapsed < start) return;
+    int y = l->start_y + (int)((int64_t)(max_y - l->start_y) * (elapsed - start) / span);
+    if (y > max_y) y = max_y;
+    if (y != lv_obj_get_scroll_y(l->box)) lv_obj_scroll_to_y(l->box, y, LV_ANIM_OFF);
+}
+
+static ScrollList models_list;
+
+static void init_models_screen(lv_obj_t* scr) {
+    models_container = make_screen_container(scr, "Modelos");
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(models_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+
+    lbl_models_total = lv_label_create(panel);
+    lv_label_set_text(lbl_models_total, "---");
+    lv_obj_set_style_text_font(lbl_models_total, L.pct_font, 0);
+    lv_obj_set_style_text_color(lbl_models_total, COL_ACCENT, 0);   // Claude tokens
+    lv_obj_set_pos(lbl_models_total, 0, 0);
+
+    lv_obj_t* pill = make_pill(panel, "Sessão 5h");
+    lv_obj_align(pill, LV_ALIGN_TOP_RIGHT, 0, 1);
+
+    const int axis_h  = lv_font_get_line_height(L.axis_font);
+    const int rows_y  = lv_font_get_line_height(L.pct_font) + L.panel_pad_y;
+    const int row_h   = (inner_h - rows_y - axis_h - 6) / MODEL_VISIBLE_ROWS;
+    const int name_h  = lv_font_get_line_height(L.reset_font);
+    const int bar_h   = L.bar_h / 2;
+    lv_obj_t* box = scroll_list_create(&models_list, panel, 0, rows_y, inner_w, MODEL_VISIBLE_ROWS, row_h);
+
+    for (int i = 0; i < MODEL_ROWS; i++) {
+        lv_obj_t* row = lv_obj_create(box);
+        lv_obj_set_pos(row, 0, i * row_h);
+        lv_obj_set_size(row, inner_w, row_h);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 0, 0);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+        lbl_model_name[i] = lv_label_create(row);
+        lv_obj_set_style_text_font(lbl_model_name[i], L.reset_font, 0);
+        lv_obj_set_style_text_color(lbl_model_name[i], COL_TEXT, 0);
+        lv_obj_set_pos(lbl_model_name[i], 0, 0);
+
+        lbl_model_tokens[i] = make_dim_label(row, L.reset_font, "");
+        lv_obj_align(lbl_model_tokens[i], LV_ALIGN_TOP_RIGHT, 0, 0);
+
+        bar_model[i] = make_bar(row, 0, name_h + 4, inner_w, bar_h);
+        lv_bar_set_range(bar_model[i], 0, 1000);
+        lv_obj_set_style_bg_color(bar_model[i], COL_ACCENT, LV_PART_INDICATOR);
+
+        model_rows[i] = row;
+        lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    lbl_models_empty = make_dim_label(panel, L.reset_font, "Nenhum uso nesta sessão");
+    lv_obj_align(lbl_models_empty, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t* note = make_dim_label(panel, L.axis_font, "");
+    lv_label_set_recolor(note, true);
+    lv_label_set_text_fmt(note, "#%s Claude: tokens#  #%s Kiro: requisições#", COL_HEX_CLAUDE, COL_HEX_KIRO);
+    lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+// Crypto and B3 screens share one table: 3 text cells + a colored change cell.
+#define QUOTE_COLS_MAX 5
+#define QUOTE_CHANGE   -1        // QuoteColumn.cell value: the colored change % column
+
+struct QuoteColumn {
+    uint16_t start_pm, end_pm;   // column span in permille of the panel's inner width
+    lv_text_align_t align;
+    int8_t cell;                 // index into QuoteRow.cells, or QUOTE_CHANGE
+};
+
+// One label per column (rows are lines) keeps each table to a few LVGL objects —
+// a label per cell exhausted LVGL's 64 KB pool at boot.
+struct QuoteTable {
+    lv_obj_t*   container;
+    lv_obj_t*   empty;
+    lv_obj_t*   note;
+    lv_obj_t*   columns[QUOTE_COLS_MAX];
+    const QuoteColumn* cols;
+    int         ncols;
+    ScrollList  list;
+    QuoteRow    rows[QUOTE_TABLE_ROWS];
+    int         total;
+};
+static QuoteTable quote_tables[QUOTE_TABLE_COUNT];
+
+static const char* const COL_HEX_GREEN = "788c5d";   // THEME_GREEN, for recolor text
+static const char* const COL_HEX_RED   = "c0392b";   // THEME_RED
+
+static void format_change(float pct, char* buf, size_t len) {
+    snprintf(buf, len, "%+.1f%%", pct);
+    for (char* p = buf; *p; p++) if (*p == '.') *p = ',';
+}
+
+static lv_obj_t* make_column(lv_obj_t* parent, const lv_font_t* font, const QuoteColumn& col,
+                             int inner_w, int y) {
+    int x = inner_w * col.start_pm / 1000;
+    int w = inner_w * col.end_pm / 1000 - x;
+    lv_obj_t* l = lv_label_create(parent);
+    lv_label_set_text(l, "");
+    lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(l, w);
+    lv_obj_set_pos(l, x, y);
+    lv_obj_set_style_text_font(l, font, 0);
+    lv_obj_set_style_text_color(l, COL_TEXT, 0);
+    lv_obj_set_style_text_align(l, col.align, 0);
+    return l;
+}
+
+static void init_quote_screen(lv_obj_t* scr, QuoteTable* t, const char* title,
+                              const char* const headers[], const QuoteColumn cols[], int ncols,
+                              const lv_font_t* font, const char* note) {
+    t->container = make_screen_container(scr, title);
+    t->cols = cols;
+    t->ncols = ncols;
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(t->container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+
+    const int axis_h = lv_font_get_line_height(L.axis_font);
+    const int line_h = lv_font_get_line_height(font);
+    const int rows_y = axis_h + 4;
+    const int row_h  = (inner_h - rows_y - axis_h - 4) / QUOTE_PAGE_ROWS;
+    lv_obj_t* box = scroll_list_create(&t->list, panel, 0, rows_y, inner_w, QUOTE_PAGE_ROWS, row_h);
+    const int col_y = (row_h - line_h) / 2;
+
+    for (int c = 0; c < ncols; c++) {
+        lv_obj_t* h = make_column(panel, L.axis_font, cols[c], inner_w, 0);
+        lv_label_set_text(h, headers[c]);
+        lv_obj_set_style_text_color(h, COL_DIM, 0);
+
+        lv_obj_t* col = make_column(box, font, cols[c], inner_w, col_y);
+        lv_obj_set_height(col, row_h);
+        lv_obj_set_style_text_line_space(col, row_h - line_h, 0);
+        t->columns[c] = col;
+        if (cols[c].cell == QUOTE_CHANGE) lv_label_set_recolor(col, true);
+    }
+    lv_obj_set_style_text_color(t->columns[0], COL_DIM, 0);
+
+    t->empty = make_dim_label(panel, L.reset_font, "Buscando cotações...");
+    lv_obj_align(t->empty, LV_ALIGN_CENTER, 0, 0);
+
+    t->note = make_dim_label(panel, L.axis_font, note);
+    lv_label_set_recolor(t->note, true);
+    lv_obj_align(t->note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+static void init_market_screens(lv_obj_t* scr) {
+    static const char* const crypto_headers[4] = {"Moeda", "R$", "US$", "24h"};
+    static const QuoteColumn crypto_cols[4] = {
+        {0, 200, LV_TEXT_ALIGN_LEFT, 0},
+        {200, 490, LV_TEXT_ALIGN_RIGHT, 1},
+        {490, 770, LV_TEXT_ALIGN_RIGHT, 2},
+        {770, 1000, LV_TEXT_ALIGN_RIGHT, QUOTE_CHANGE},
+    };
+    init_quote_screen(scr, &quote_tables[QUOTES_CRYPTO], "Criptomoedas",
+                      crypto_headers, crypto_cols, 4, L.table_font, "CoinGecko · variação em 24h");
+
+    static const char* const stock_headers[5] = {"Ação", "Empresa", "R$", "Dia", "P/VP"};
+    static const QuoteColumn stock_cols[5] = {
+        {0, 218, LV_TEXT_ALIGN_LEFT, 0},
+        {222, 525, LV_TEXT_ALIGN_LEFT, 1},
+        {525, 682, LV_TEXT_ALIGN_RIGHT, 2},
+        {682, 850, LV_TEXT_ALIGN_RIGHT, QUOTE_CHANGE},
+        {850, 1000, LV_TEXT_ALIGN_RIGHT, 3},
+    };
+    init_quote_screen(scr, &quote_tables[QUOTES_STOCKS], "Bovespa",
+                      stock_headers, stock_cols, 5, L.table_font_dense,
+                      "Yahoo (15 min) · Fundamentus");
+}
+
+static void render_quote_table(QuoteTable& t) {
+    // Worst case per column: every row × (15 chars + recolor tags + newline).
+    // Static: too big for the loop task's stack.
+    static char text[QUOTE_COLS_MAX][QUOTE_TABLE_ROWS * 32];
+    size_t used[QUOTE_COLS_MAX] = {};
+    for (int r = 0; r < t.total; r++) {
+        const char* sep = r ? "\n" : "";
+        char chg[16];
+        format_change(t.rows[r].change_pct, chg, sizeof(chg));
+        for (int c = 0; c < t.ncols; c++) {
+            size_t room = used[c] < sizeof(text[c]) ? sizeof(text[c]) - used[c] : 0;
+            if (t.cols[c].cell == QUOTE_CHANGE) {
+                used[c] += snprintf(text[c] + used[c], room, "%s#%s %s#", sep,
+                                    t.rows[r].change_pct < 0 ? COL_HEX_RED : COL_HEX_GREEN, chg);
+            } else {
+                used[c] += snprintf(text[c] + used[c], room, "%s%s", sep, t.rows[r].cells[t.cols[c].cell]);
+            }
+        }
+    }
+    t.list.rows = t.total;
+    for (int c = 0; c < t.ncols; c++) {
+        text[c][used[c] < sizeof(text[c]) ? used[c] : sizeof(text[c]) - 1] = '\0';
+        lv_label_set_text(t.columns[c], text[c]);
+        lv_obj_set_height(t.columns[c], t.list.row_h * (t.total > 0 ? t.total : 1));
+    }
+    if (t.total > 0) lv_obj_add_flag(t.empty, LV_OBJ_FLAG_HIDDEN);
+    else             lv_obj_clear_flag(t.empty, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_update_quotes(quote_table_t which, const QuoteRow* rows, int offset, int count, int total) {
+    QuoteTable& t = quote_tables[which];
+    if (!t.container) return;
+    t.total = total > QUOTE_TABLE_ROWS ? QUOTE_TABLE_ROWS : total;
+    for (int i = 0; i < count; i++) {
+        if (offset + i >= 0 && offset + i < t.total) t.rows[offset + i] = rows[i];
+    }
+    render_quote_table(t);
+}
+
+void ui_update_stock_index(const char* value, float change_pct) {
+    QuoteTable& t = quote_tables[QUOTES_STOCKS];
+    if (!t.note) return;
+    char chg[16], buf[96];
+    format_change(change_pct, chg, sizeof(chg));
+    snprintf(buf, sizeof(buf), "Ibovespa %s #%s %s# · atraso 15 min",
+             value, change_pct < 0 ? COL_HEX_RED : COL_HEX_GREEN, chg);
+    lv_label_set_text(t.note, buf);
+}
+
+// ---- Google Calendar: today's meetings ----
+static const char* const COL_HEX_DIM = "b0aea5";   // THEME_DIM
+#define AGENDA_VISIBLE_ROWS 8
+static lv_obj_t* agenda_container;
+static lv_obj_t* agenda_cols[2];
+static lv_obj_t* lbl_agenda_empty;
+static AgendaRow agenda[AGENDA_MAX];
+static int       agenda_total = 0;
+static bool      agenda_needs_login = false;
+static lv_obj_t* lbl_agenda_note;
+static ScrollList agenda_list;
+
+static void init_agenda_screen(lv_obj_t* scr) {
+    agenda_container = make_screen_container(scr, "Agenda de Hoje");
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(agenda_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+
+    const lv_font_t* font = L.table_font_dense;
+    const int axis_h = lv_font_get_line_height(L.axis_font);
+    const int line_h = lv_font_get_line_height(font);
+    const int rows_y = axis_h + 4;
+    const int row_h  = (inner_h - rows_y - axis_h - 4) / AGENDA_VISIBLE_ROWS;
+    lv_obj_t* box = scroll_list_create(&agenda_list, panel, 0, rows_y, inner_w, AGENDA_VISIBLE_ROWS, row_h);
+
+    static const char* const headers[2] = {"Horário", "Reunião"};
+    static const QuoteColumn cols[2] = {
+        {0, 330, LV_TEXT_ALIGN_LEFT, 0},
+        {345, 1000, LV_TEXT_ALIGN_LEFT, 0},
+    };
+    for (int c = 0; c < 2; c++) {
+        lv_obj_t* h = make_column(panel, L.axis_font, cols[c], inner_w, 0);
+        lv_label_set_text(h, headers[c]);
+        lv_obj_set_style_text_color(h, COL_DIM, 0);
+        lv_obj_t* col = make_column(box, font, cols[c], inner_w, (row_h - line_h) / 2);
+        lv_obj_set_height(col, row_h);
+        lv_obj_set_style_text_line_space(col, row_h - line_h, 0);
+        lv_label_set_recolor(col, true);
+        agenda_cols[c] = col;
+    }
+
+    lbl_agenda_empty = make_dim_label(panel, L.reset_font, "Buscando agenda...");
+    lv_obj_align(lbl_agenda_empty, LV_ALIGN_CENTER, 0, 0);
+
+    lbl_agenda_note = make_dim_label(panel, L.axis_font, "");
+    lv_label_set_recolor(lbl_agenda_note, true);
+    lv_obj_align(lbl_agenda_note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+static void render_agenda(void) {
+    lv_label_set_text_fmt(lbl_agenda_note, "Google Agenda \xC2\xB7 #%s agora#", accent_hex);
+    // Row colors: finished meetings dim, the current one in the accent, upcoming white.
+    static char text[2][AGENDA_MAX * 72];
+    size_t used[2] = {};
+    int shown = 0;
+    int focus = -1, next = -1;
+    for (int r = 0; r < agenda_total; r++) {
+        const AgendaRow& a = agenda[r];
+        if (!a.title[0]) continue;               // chunk not arrived yet
+        // Opening focus: the meeting on now (else the next one), one row of context above.
+        if (a.end[0] && a.state == 1 && focus < 0) focus = shown;
+        if (a.end[0] && a.state == 2 && next < 0) next = shown;
+        const char* sep = shown++ ? "\n" : "";
+        const char* hex = a.state == 0 ? COL_HEX_DIM : a.state == 1 ? accent_hex : "faf9f5";
+        if (a.end[0])
+            used[0] += snprintf(text[0] + used[0], sizeof(text[0]) - used[0], "%s#%s %s-%s#", sep, hex, a.start, a.end);
+        else
+            used[0] += snprintf(text[0] + used[0], sizeof(text[0]) - used[0], "%s#%s Dia todo#", sep, hex);
+        used[1] += snprintf(text[1] + used[1], sizeof(text[1]) - used[1], "%s#%s %s#", sep, hex, a.title);
+    }
+    for (int c = 0; c < 2; c++) {
+        text[c][used[c] < sizeof(text[c]) ? used[c] : sizeof(text[c]) - 1] = '\0';
+        lv_label_set_text(agenda_cols[c], text[c]);
+        lv_obj_set_height(agenda_cols[c], agenda_list.row_h * (shown > 0 ? shown : 1));
+    }
+    agenda_list.rows = shown;
+    if (focus < 0) focus = next >= 0 ? next : shown - 1;
+    agenda_list.focus = focus > 0 ? focus - 1 : 0;
+    lv_label_set_text(lbl_agenda_empty, agenda_needs_login ? "Falta o login do Google" : "Nenhuma reunião hoje");
+    if (shown > 0) lv_obj_add_flag(lbl_agenda_empty, LV_OBJ_FLAG_HIDDEN);
+    else           lv_obj_clear_flag(lbl_agenda_empty, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, bool needs_login) {
+    if (!agenda_container) return;
+    agenda_total = total > AGENDA_MAX ? AGENDA_MAX : total;
+    agenda_needs_login = needs_login;
+    for (int i = 0; i < count; i++) {
+        if (offset + i >= 0 && offset + i < agenda_total) agenda[offset + i] = rows[i];
+    }
+    for (int j = agenda_total; j < AGENDA_MAX; j++) agenda[j] = AgendaRow{};
+    render_agenda();
+}
+
+// ---- Kiro routines (leo-dias-news) ----
+#define ROUTINE_NEW_MS (60 * 1000)   // a routine that just ran is highlighted this long
+static lv_obj_t*  routines_container;
+static lv_obj_t*  routines_cols[4];
+static lv_obj_t*  lbl_routines_empty;
+static RoutineRow routines[ROUTINES_MAX];
+static int        routines_total = 0;
+static bool       routines_loaded = false;          // first payload seeds, later ones highlight
+static uint32_t   routines_new_ms[ROUTINES_MAX] = {};
+static char       routines_new_name[ROUTINES_MAX][28] = {};
+static ScrollList routines_list;
+#define ROUTINES_VISIBLE_ROWS 8
+
+static void init_routines_screen(lv_obj_t* scr) {
+    routines_container = make_screen_container(scr, "Rotinas Automáticas");
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(routines_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+
+    const lv_font_t* font = L.table_font_dense;
+    const int axis_h = lv_font_get_line_height(L.axis_font);
+    const int line_h = lv_font_get_line_height(font);
+    const int rows_y = axis_h + 4;
+    const int row_h  = (inner_h - rows_y - axis_h - 4) / ROUTINES_VISIBLE_ROWS;
+    lv_obj_t* box = scroll_list_create(&routines_list, panel, 0, rows_y, inner_w, ROUTINES_VISIBLE_ROWS, row_h);
+
+    static const char* const headers[4] = {"Rotina", "Última", "Hoje", ""};
+    static const QuoteColumn cols[4] = {
+        {0, 570, LV_TEXT_ALIGN_LEFT, 0},
+        {570, 745, LV_TEXT_ALIGN_RIGHT, 0},
+        {745, 865, LV_TEXT_ALIGN_RIGHT, 0},
+        {865, 1000, LV_TEXT_ALIGN_RIGHT, 0},
+    };
+    for (int c = 0; c < 4; c++) {
+        lv_obj_t* h = make_column(panel, L.axis_font, cols[c], inner_w, 0);
+        lv_label_set_text(h, headers[c]);
+        lv_obj_set_style_text_color(h, COL_DIM, 0);
+        lv_obj_t* col = make_column(box, font, cols[c], inner_w, (row_h - line_h) / 2);
+        lv_obj_set_height(col, row_h);
+        lv_obj_set_style_text_line_space(col, row_h - line_h, 0);
+        lv_label_set_recolor(col, true);
+        routines_cols[c] = col;
+    }
+    // Kiro screen: purple highlights, white text.
+    lv_obj_set_style_text_color(routines_cols[1], COL_TEXT, 0);
+    lv_obj_set_style_text_color(routines_cols[2], COL_TEXT, 0);
+
+    lbl_routines_empty = make_dim_label(panel, L.reset_font, "Buscando rotinas...");
+    lv_obj_align(lbl_routines_empty, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t* note = make_dim_label(panel, L.axis_font, "leo-dias-news \xC2\xB7 Slack");
+    lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+static void render_routines(void) {
+    const uint32_t now = lv_tick_get();
+    static char text[4][ROUTINES_MAX * 48];
+    size_t used[4] = {};
+    int shown = 0;
+    for (int r = 0; r < routines_total; r++) {
+        const RoutineRow& row = routines[r];
+        if (!row.name[0]) continue;              // chunk not arrived yet
+        const char* sep = shown++ ? "\n" : "";
+        bool fresh = false;
+        for (int i = 0; i < ROUTINES_MAX; i++) {
+            if (routines_new_ms[i] && now - routines_new_ms[i] < ROUTINE_NEW_MS &&
+                strcmp(routines_new_name[i], row.name) == 0) fresh = true;
+        }
+        if (fresh)
+            used[0] += snprintf(text[0] + used[0], sizeof(text[0]) - used[0], "%s#%s %s#", sep, COL_HEX_KIRO, row.name);
+        else
+            used[0] += snprintf(text[0] + used[0], sizeof(text[0]) - used[0], "%s%s", sep, row.name);
+        used[1] += snprintf(text[1] + used[1], sizeof(text[1]) - used[1], "%s%s", sep, row.time);
+        used[2] += snprintf(text[2] + used[2], sizeof(text[2]) - used[2], "%s%d\xC3\x97", sep, row.runs);
+        used[3] += snprintf(text[3] + used[3], sizeof(text[3]) - used[3], "%s#%s %s#", sep,
+                            row.ok ? COL_HEX_KIRO : COL_HEX_RED, row.ok ? "ok" : "erro");
+    }
+    for (int c = 0; c < 4; c++) {
+        text[c][used[c] < sizeof(text[c]) ? used[c] : sizeof(text[c]) - 1] = '\0';
+        lv_label_set_text(routines_cols[c], text[c]);
+        lv_obj_set_height(routines_cols[c], routines_list.row_h * (shown > 0 ? shown : 1));
+    }
+    routines_list.rows = shown;
+    lv_label_set_text(lbl_routines_empty, "Nenhuma rotina hoje");
+    if (routines_total > 0) lv_obj_add_flag(lbl_routines_empty, LV_OBJ_FLAG_HIDDEN);
+    else                    lv_obj_clear_flag(lbl_routines_empty, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_update_routines(const RoutineRow* rows, int offset, int count, int total) {
+    if (!routines_container) return;
+    const uint32_t now = lv_tick_get();
+    routines_total = total > ROUTINES_MAX ? ROUTINES_MAX : total;
+    for (int i = 0; i < count; i++) {
+        const int at = offset + i;
+        if (at < 0 || at >= routines_total) continue;
+        // A new run (different latest time, or a routine not listed before) gets highlighted.
+        bool is_new = true;
+        for (int j = 0; j < ROUTINES_MAX; j++) {
+            if (strcmp(routines[j].name, rows[i].name) == 0 && strcmp(routines[j].time, rows[i].time) == 0) {
+                is_new = false;
+                break;
+            }
+        }
+        if (is_new && routines_loaded) {
+            int slot = 0;
+            for (int j = 1; j < ROUTINES_MAX; j++) if (routines_new_ms[j] < routines_new_ms[slot]) slot = j;
+            routines_new_ms[slot] = now ? now : 1;
+            strlcpy(routines_new_name[slot], rows[i].name, sizeof(routines_new_name[slot]));
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        const int at = offset + i;
+        if (at >= 0 && at < routines_total) routines[at] = rows[i];
+    }
+    for (int j = routines_total; j < ROUTINES_MAX; j++) routines[j] = RoutineRow{};
+    if (offset + count >= routines_total) routines_loaded = true;
+    render_routines();
+}
+
+// Clears the "just ran" highlight once it expires.
+static void routines_tick(void) {
+    static uint32_t last = 0;
+    const uint32_t now = lv_tick_get();
+    if (now - last < 5000) return;
+    last = now;
+    for (int i = 0; i < ROUTINES_MAX; i++) {
+        if (routines_new_ms[i] && now - routines_new_ms[i] >= ROUTINE_NEW_MS) {
+            routines_new_ms[i] = 0;
+            render_routines();
+        }
+    }
+}
+
+static lv_obj_t* games_container;
+static lv_obj_t* lbl_games_empty;
+static lv_obj_t* lbl_game_match[GAMES_MAX];
+static lv_obj_t* lbl_game_detail[GAMES_MAX];
+static GameRow   games[GAMES_MAX];
+static int       games_total = 0;
+static lv_obj_t* game_rows[GAMES_MAX];
+static ScrollList games_list;
+#define GAMES_VISIBLE_ROWS 4
+
+// ---- Live match ----
+#define LIVE_STALE_MS  (3 * 60 * 1000)   // no update this long (daemon gone) → release the screen
+#define LIVE_GOAL_MS   (60 * 1000)       // a changed score stays highlighted this long
+static lv_obj_t* live_container;
+static lv_obj_t* lbl_live_comp;
+static lv_obj_t* lbl_live_team[2];
+static lv_obj_t* lbl_live_score[2];
+static lv_obj_t* lbl_live_status;
+static bool      live_active = false;
+static uint32_t  live_last_ms = 0;
+static int       live_goals[2] = {-1, -1};
+static uint32_t  live_goal_ms[2] = {0, 0};
+
+static void init_live_screen(lv_obj_t* scr) {
+    live_container = make_screen_container(scr, "Vasco ao vivo");
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(live_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+
+    const int dot = lv_font_get_line_height(L.axis_font) / 2;
+    lv_obj_t* live_dot = lv_obj_create(panel);   // fonts are Latin-1 only, so draw the dot
+    lv_obj_set_size(live_dot, dot, dot);
+    lv_obj_set_style_radius(live_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(live_dot, COL_RED, 0);
+    lv_obj_set_style_border_width(live_dot, 0, 0);
+    lv_obj_clear_flag(live_dot, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+    lv_obj_set_pos(live_dot, 0, dot / 2);
+
+    lv_obj_t* badge = lv_label_create(panel);
+    lv_label_set_text(badge, "AO VIVO");
+    lv_obj_set_style_text_font(badge, L.axis_font, 0);
+    lv_obj_set_style_text_color(badge, COL_RED, 0);
+    lv_obj_set_pos(badge, dot + 6, 0);
+
+    lbl_live_comp = make_dim_label(panel, L.axis_font, "");
+    lv_obj_align(lbl_live_comp, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    const int score_h = lv_font_get_line_height(&font_tiempos_56);
+    const int score_w = inner_w / 4;
+    const int axis_h  = lv_font_get_line_height(L.axis_font);
+    const int rows_top = axis_h + 8;
+    const int status_h = lv_font_get_line_height(L.reset_font);
+    const int row_h = (inner_h - rows_top - status_h - 8) / 2;
+    for (int i = 0; i < 2; i++) {
+        const int y = rows_top + i * row_h + (row_h - score_h) / 2;
+        lbl_live_team[i] = lv_label_create(panel);
+        lv_label_set_long_mode(lbl_live_team[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_width(lbl_live_team[i], inner_w - score_w);
+        lv_obj_set_style_text_font(lbl_live_team[i], L.reset_font, 0);
+        lv_obj_set_style_text_color(lbl_live_team[i], COL_TEXT, 0);
+        lv_obj_set_pos(lbl_live_team[i], 0, y + (score_h - status_h) / 2);
+
+        lbl_live_score[i] = lv_label_create(panel);
+        lv_label_set_text(lbl_live_score[i], "-");
+        lv_obj_set_width(lbl_live_score[i], score_w);
+        lv_obj_set_style_text_align(lbl_live_score[i], LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_set_style_text_font(lbl_live_score[i], &font_tiempos_56, 0);
+        lv_obj_set_style_text_color(lbl_live_score[i], COL_TEXT, 0);
+        lv_obj_set_pos(lbl_live_score[i], inner_w - score_w, y);
+    }
+
+    lbl_live_status = lv_label_create(panel);
+    lv_label_set_text(lbl_live_status, "");
+    lv_obj_set_style_text_font(lbl_live_status, L.reset_font, 0);
+    lv_obj_set_style_text_color(lbl_live_status, accent_color, 0);
+    lv_obj_align(lbl_live_status, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+void ui_update_kiro(int percent, int reset_days) {
+    kiro_pct = percent;
+    kiro_reset_days = reset_days;
+    if (!panel_kiro) return;
+    if (percent < 0) {
+        lv_label_set_text(lbl_kiro_pct, "---%");
+        lv_bar_set_value(bar_kiro, 0, LV_ANIM_OFF);
+        lv_label_set_text(lbl_kiro_reset, "Sem dados do Kiro");
+        return;
+    }
+    lv_label_set_text_fmt(lbl_kiro_pct, "%d%%", percent);
+    lv_bar_set_value(bar_kiro, percent > 100 ? 100 : percent, LV_ANIM_ON);
+    lv_label_set_text_fmt(lbl_kiro_reset, "Renova em %d %s", reset_days, reset_days == 1 ? "dia" : "dias");
+}
+
+void ui_update_live(const LiveMatch* m) {
+    if (!live_container) return;
+    if (!m) {
+        if (!live_active) return;
+        live_active = false;
+        live_goals[0] = live_goals[1] = -1;
+        if (current_screen == SCREEN_LIVE) ui_show_screen(ROTATION[0].screen);
+        return;
+    }
+    const uint32_t now = lv_tick_get();
+    lv_label_set_text(lbl_live_comp, m->competition);
+    lv_label_set_text(lbl_live_team[0], m->home);
+    lv_label_set_text(lbl_live_team[1], m->away);
+    const int goals[2] = {m->home_goals, m->away_goals};
+    for (int i = 0; i < 2; i++) {
+        if (live_goals[i] >= 0 && goals[i] > live_goals[i]) live_goal_ms[i] = now;
+        live_goals[i] = goals[i];
+        lv_label_set_text_fmt(lbl_live_score[i], "%d", goals[i]);
+    }
+    if (m->clock[0]) lv_label_set_text_fmt(lbl_live_status, "%s · %s", m->phase, m->clock);
+    else             lv_label_set_text(lbl_live_status, m->phase);
+
+    live_last_ms = now;
+    if (!live_active) {
+        live_active = true;
+        tap_hold = false;                   // a match takes the screen right away
+        ui_show_screen(SCREEN_LIVE);
+    }
+}
+
+static void live_tick(void) {
+    if (!live_active) return;
+    const uint32_t now = lv_tick_get();
+    if (now - live_last_ms > LIVE_STALE_MS) {
+        ui_update_live(nullptr);
+        return;
+    }
+    for (int i = 0; i < 2; i++) {
+        const bool goal = live_goal_ms[i] && now - live_goal_ms[i] < LIVE_GOAL_MS;
+        lv_obj_set_style_text_color(lbl_live_score[i], goal ? accent_color : COL_TEXT, 0);
+    }
+}
+
+static void init_games_screen(lv_obj_t* scr) {
+    games_container = make_screen_container(scr, "Próximos Jogos do Vasco");
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(games_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+
+    const int axis_h  = lv_font_get_line_height(L.axis_font);
+    const int match_h = lv_font_get_line_height(L.reset_font);
+    const int block_h = (inner_h - axis_h - 6) / GAMES_VISIBLE_ROWS;
+    lv_obj_t* box = scroll_list_create(&games_list, panel, 0, 0, inner_w, GAMES_VISIBLE_ROWS, block_h);
+
+    for (int i = 0; i < GAMES_MAX; i++) {
+        lv_obj_t* row = lv_obj_create(box);
+        lv_obj_set_pos(row, 0, i * block_h);
+        lv_obj_set_size(row, inner_w, block_h);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 0, 0);
+        lv_obj_clear_flag(row, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+        lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+        game_rows[i] = row;
+
+        lbl_game_match[i] = lv_label_create(row);
+        lv_label_set_long_mode(lbl_game_match[i], LV_LABEL_LONG_CLIP);
+        lv_obj_set_width(lbl_game_match[i], inner_w);
+        lv_obj_set_pos(lbl_game_match[i], 0, 0);
+        lv_obj_set_style_text_font(lbl_game_match[i], L.reset_font, 0);
+        lv_obj_set_style_text_color(lbl_game_match[i], COL_TEXT, 0);
+
+        lbl_game_detail[i] = make_dim_label(row, L.axis_font, "");
+        lv_label_set_long_mode(lbl_game_detail[i], LV_LABEL_LONG_CLIP);
+        lv_obj_set_width(lbl_game_detail[i], inner_w);
+        lv_obj_set_pos(lbl_game_detail[i], 0, match_h + 2);
+        if (i == 0) lv_obj_set_style_text_color(lbl_game_detail[i], accent_color, 0);
+    }
+
+    lbl_games_empty = make_dim_label(panel, L.reset_font, "Buscando jogos...");
+    lv_obj_align(lbl_games_empty, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t* note = make_dim_label(panel, L.axis_font, "Próximos jogos · ESPN");
+    lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+void ui_update_games(const GameRow* rows, int offset, int count, int total) {
+    if (!games_container) return;
+    games_total = total > GAMES_MAX ? GAMES_MAX : total;
+    for (int i = 0; i < count; i++) {
+        if (offset + i >= 0 && offset + i < games_total) games[offset + i] = rows[i];
+    }
+
+    char buf[64];
+    for (int i = 0; i < GAMES_MAX; i++) {
+        if (i >= games_total) {
+            lv_obj_add_flag(game_rows[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        const GameRow& g = games[i];
+        if (g.home) snprintf(buf, sizeof(buf), "Vasco x %s", g.opponent);
+        else        snprintf(buf, sizeof(buf), "%s x Vasco", g.opponent);
+        lv_label_set_text(lbl_game_match[i], buf);
+        snprintf(buf, sizeof(buf), "%s · %s", g.kickoff, g.competition);
+        lv_label_set_text(lbl_game_detail[i], buf);
+        lv_obj_clear_flag(game_rows[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    games_list.rows = games_total;
+    lv_label_set_text(lbl_games_empty, "Nenhum jogo marcado");
+    if (games_total > 0) lv_obj_add_flag(lbl_games_empty, LV_OBJ_FLAG_HIDDEN);
+    else                 lv_obj_clear_flag(lbl_games_empty, LV_OBJ_FLAG_HIDDEN);
+}
+
+// {"hb": [claude, kiro], "tc": tokens, "tk": requests}: two 24-char base64
+// strings, each hour's segment already scaled so the tallest stack fills the plot.
+void ui_update_history_bars(const char* claude, const char* kiro, uint64_t tokens, int requests) {
+    if (!lbl_history_now) return;
+    static const char B64[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const size_t nc = strlen(claude), nk = strlen(kiro);
+    const int bottom = 6 + history_plot_h;
+    bool any = false;
+    for (int i = 0; i < HISTORY_HOURS; i++) {
+        const char* hc = i < (int)nc ? strchr(B64, claude[i]) : nullptr;
+        const char* hk = i < (int)nk ? strchr(B64, kiro[i]) : nullptr;
+        const int ch = hc && *hc ? (int)(hc - B64) * history_plot_h / 63 : 0;
+        const int kh = hk && *hk ? (int)(hk - B64) * history_plot_h / 63 : 0;
+        const int x = lv_obj_get_x(history_claude_bar[i]);
+        lv_obj_set_size(history_claude_bar[i], lv_obj_get_width(history_claude_bar[i]), ch);
+        lv_obj_set_pos(history_claude_bar[i], x, bottom - ch);
+        lv_obj_set_size(history_kiro_bar[i], lv_obj_get_width(history_kiro_bar[i]), kh);
+        lv_obj_set_pos(history_kiro_bar[i], x, bottom - ch - kh);
+        if (ch) lv_obj_clear_flag(history_claude_bar[i], LV_OBJ_FLAG_HIDDEN);
+        else    lv_obj_add_flag(history_claude_bar[i], LV_OBJ_FLAG_HIDDEN);
+        if (kh) lv_obj_clear_flag(history_kiro_bar[i], LV_OBJ_FLAG_HIDDEN);
+        else    lv_obj_add_flag(history_kiro_bar[i], LV_OBJ_FLAG_HIDDEN);
+        any = any || ch || kh;
+    }
+    char buf[24];
+    format_tokens(tokens, buf, sizeof(buf));
+    lv_label_set_text(lbl_history_now, buf);
+    lv_label_set_text_fmt(lbl_history_peak, "%d", requests);
+    history_place_units();
+    lv_label_set_text(lbl_history_empty, "Sem uso nas últimas 24h");
+    if (any) lv_obj_add_flag(lbl_history_empty, LV_OBJ_FLAG_HIDDEN);
+    else     lv_obj_clear_flag(lbl_history_empty, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_update_models(const ModelUsage* models, int count, int kiro_requests) {
+    if (!lbl_models_total) return;
+    // Kiro gets a row after the Claude models whenever it was used in this window.
+    const bool kiro = kiro_requests > 0;
+    if (count > MODELS_MAX) count = MODELS_MAX;
+    models_list.rows = count + (kiro ? 1 : 0);
+    uint64_t total = 0, top = 0;
+    for (int i = 0; i < count; i++) {
+        total += models[i].tokens;
+        if (models[i].tokens > top) top = models[i].tokens;
+    }
+
+    char buf[24];
+    if (count == 0 && !kiro) {
+        lv_label_set_text(lbl_models_total, "0");
+        lv_obj_clear_flag(lbl_models_empty, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        format_tokens(total, buf, sizeof(buf));
+        lv_label_set_text(lbl_models_total, buf);
+        lv_obj_add_flag(lbl_models_empty, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    for (int i = 0; i < MODEL_ROWS; i++) {
+        if (kiro && i == count) {              // Kiro row: white name, purple count + bar
+            lv_label_set_text(lbl_model_name[i], "Kiro \xC2\xB7 auto");
+            lv_label_set_text_fmt(lbl_model_tokens[i], "%d req", kiro_requests);
+            lv_obj_set_style_text_color(lbl_model_tokens[i], COL_KIRO, 0);
+            lv_obj_set_style_bg_color(bar_model[i], COL_KIRO, LV_PART_INDICATOR);
+            lv_bar_set_value(bar_model[i], 1000, LV_ANIM_OFF);   // bars rank within each tool
+            lv_obj_clear_flag(model_rows[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        if (i >= count) {
+            lv_obj_add_flag(model_rows[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_label_set_text(lbl_model_name[i], models[i].name);
+        format_tokens(models[i].tokens, buf, sizeof(buf));
+        lv_label_set_text(lbl_model_tokens[i], buf);
+        lv_obj_set_style_text_color(lbl_model_tokens[i], COL_ACCENT, 0);
+        lv_obj_set_style_bg_color(bar_model[i], COL_ACCENT, LV_PART_INDICATOR);
+        int32_t v = top ? (int32_t)(models[i].tokens * 1000 / top) : 0;
+        lv_bar_set_value(bar_model[i], v, LV_ANIM_OFF);
+        lv_obj_clear_flag(model_rows[i], LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 // ======== Public API ========
@@ -557,9 +1646,21 @@ void ui_init(void) {
     init_battery_icons();
 
     init_usage_screen(scr);
+    init_history_screen(scr);
+    init_models_screen(scr);
+    init_market_screens(scr);
+    init_agenda_screen(scr);
+    init_routines_screen(scr);
+    init_games_screen(scr);
+    init_live_screen(scr);
     splash_init(scr);
 
     if (splash_get_root()) {
+#ifdef BOARD_HAS_PSRAM
+        make_screen_draggable(splash_get_root());   // PSRAM-less boards draw the splash past LVGL
+#else
+        lv_obj_add_event_cb(splash_get_root(), screen_pressed_cb, LV_EVENT_PRESSED, NULL);
+#endif
         lv_obj_add_event_cb(splash_get_root(), global_click_cb, LV_EVENT_CLICKED, NULL);
     }
 
@@ -601,10 +1702,10 @@ void ui_update(const UsageData* data) {
         clock_base_epoch = data->clock_epoch;
         clock_base_ms = last_data_ms;
         clock_fmt = data->clock_fmt;
-    } else if (clock_base_epoch != 0) {   // clock turned off daemon-side → revert title to "Usage"
+    } else if (clock_base_epoch != 0) {   // clock turned off daemon-side → revert title to "Uso"
         clock_base_epoch = 0;
         clock_last_min = -1;
-        lv_label_set_text(lbl_title, "Usage");
+        lv_label_set_text(lbl_title, "Uso");
     }
 
     int s_pct = (int)(data->session_pct + 0.5f);
@@ -612,7 +1713,7 @@ void ui_update(const UsageData* data) {
     if (data->enterprise) {
         // Spending box: big number-only label + small "%" symbol + desc + pace
         lv_obj_set_style_text_font(lbl_session_pct, L.ent_pct_font, 0);
-        lv_label_set_text(lbl_session_label, "Spending");
+        lv_label_set_text(lbl_session_label, "Gastos");
         lv_obj_add_flag(lbl_session_reset, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lbl_session_pct_sym, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lbl_spending_desc,   LV_OBJ_FLAG_HIDDEN);
@@ -620,7 +1721,7 @@ void ui_update(const UsageData* data) {
         if (panel_weekly) lv_obj_clear_flag(panel_weekly, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_set_style_text_font(lbl_session_pct, L.pct_font, 0);
-        lv_label_set_text(lbl_session_label, "Current");
+        lv_label_set_text(lbl_session_label, "Claude - Daily");
         lv_obj_clear_flag(lbl_session_reset, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lbl_session_pct_sym, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lbl_spending_desc,   LV_OBJ_FLAG_HIDDEN);
@@ -631,13 +1732,13 @@ void ui_update(const UsageData* data) {
     char buf[48];
 
     // Pace vars used in both enterprise blocks below
-    const char* pace_text = "Under pace";
+    const char* pace_text = "Abaixo do ritmo";
     lv_color_t  pace_color = COL_GREEN;
     const char* pace_hex   = "788c5d";   // matches THEME_GREEN
     if (data->session_pct > (float)data->time_pct + 15.0f) {
-        pace_text = "Over pace";  pace_color = COL_RED;   pace_hex = "c0392b";
+        pace_text = "Acima do ritmo";  pace_color = COL_RED;   pace_hex = "c0392b";
     } else if (data->session_pct > (float)data->time_pct - 15.0f) {
-        pace_text = "On pace";    pace_color = COL_AMBER; pace_hex = "d97757";
+        pace_text = "No ritmo";    pace_color = COL_AMBER; pace_hex = "d97757";
     }
 
     if (data->enterprise) {
@@ -651,25 +1752,23 @@ void ui_update(const UsageData* data) {
     }
 
     lv_bar_set_value(bar_session, s_pct, LV_ANIM_ON);
-    lv_obj_set_style_bg_color(bar_session, pct_color(data->session_pct), LV_PART_INDICATOR);
 
     if (data->enterprise) {
         // Period box: time % + dynamic pace color + "Resets <date>" label
-        lv_label_set_text(lbl_weekly_label, "Period");
+        lv_label_set_text(lbl_weekly_label, "Período");
         lv_label_set_text_fmt(lbl_weekly_pct, "%d%%", data->time_pct);
         lv_bar_set_value(bar_weekly, data->time_pct, LV_ANIM_ON);
         lv_color_t bar_pace = (data->session_pct <= (float)data->time_pct) ? COL_GREEN :
                               (data->session_pct <= (float)data->time_pct + 15.0f) ? COL_AMBER :
                               COL_RED;
         lv_obj_set_style_bg_color(bar_weekly, bar_pace, LV_PART_INDICATOR);
-        snprintf(buf, sizeof(buf), "#%s %s# - #faf9f5 Resets %s#",
+        snprintf(buf, sizeof(buf), "#%s %s# - #faf9f5 Reinicia %s#",
                  pace_hex, pace_text, data->reset_date);
         lv_label_set_text(lbl_weekly_reset, buf);
     } else {
         int w_pct = (int)(data->weekly_pct + 0.5f);
         lv_label_set_text_fmt(lbl_weekly_pct, "%d%%", w_pct);
         lv_bar_set_value(bar_weekly, w_pct, LV_ANIM_ON);
-        lv_obj_set_style_bg_color(bar_weekly, pct_color(data->weekly_pct), LV_PART_INDICATOR);
         format_reset_time(data->weekly_reset_mins, buf, sizeof(buf));
         lv_label_set_text(lbl_weekly_reset, buf);
     }
@@ -698,14 +1797,66 @@ static void update_view_state(void) {
                       LV_OBJ_FLAG_HIDDEN);
 }
 
+static void rotation_tick(void) {
+    const uint32_t now = lv_tick_get();
+    if (tap_hold) {
+        if (now - tap_ms < ROTATION_TAP_PAUSE_MS) return;
+        tap_hold = false;
+    }
+    // A Vasco match freezes rotation on the live score until it ends.
+    if (live_active) {
+        if (current_screen != SCREEN_LIVE) ui_show_screen(SCREEN_LIVE);
+        return;
+    }
+    if (now - screen_shown_ms < rotation_dwell_ms(current_screen)) return;
+    size_t next = 0;
+    for (size_t i = 0; i < ROTATION_COUNT; i++) {
+        if (ROTATION[i].screen == current_screen) { next = (i + 1) % ROTATION_COUNT; break; }
+    }
+    ui_show_screen(ROTATION[next].screen);
+}
+
+// The visible screen's list (if any) glides on its own while unattended.
+static void lists_tick(void) {
+    const uint32_t dwell = rotation_dwell_ms(current_screen);
+    switch (current_screen) {
+    case SCREEN_AGENDA:   scroll_list_tick(&agenda_list, dwell); break;
+    case SCREEN_MODELS:   scroll_list_tick(&models_list, dwell); break;
+    case SCREEN_ROUTINES: scroll_list_tick(&routines_list, dwell); break;
+    case SCREEN_CRYPTO:   scroll_list_tick(&quote_tables[QUOTES_CRYPTO].list, dwell); break;
+    case SCREEN_STOCKS:   scroll_list_tick(&quote_tables[QUOTES_STOCKS].list, dwell); break;
+    case SCREEN_VASCO:    scroll_list_tick(&games_list, dwell); break;
+    default: break;
+    }
+}
+
+// Repaint accent-colored items when the on-screen character changes.
+static void accent_tick(void) {
+    static int shown = -1;                    // -1 unknown, 0 Claude, 1 Kiro
+    const int kiro = splash_kiro_on_screen() ? 1 : 0;
+    if (kiro == shown) return;
+    shown = kiro;
+    accent_color = kiro ? COL_KIRO : COL_ACCENT;
+    accent_hex   = kiro ? COL_HEX_KIRO : COL_HEX_CLAUDE;
+    if (lbl_anim)          lv_obj_set_style_text_color(lbl_anim, accent_color, 0);
+    if (lbl_live_status)   lv_obj_set_style_text_color(lbl_live_status, accent_color, 0);
+    if (lbl_game_detail[0]) lv_obj_set_style_text_color(lbl_game_detail[0], accent_color, 0);
+    if (lbl_agenda_note)   render_agenda();
+}
+
 void ui_tick_anim(void) {
+    accent_tick();
+    live_tick();
+    routines_tick();
+    rotation_tick();
+    lists_tick();
     if (current_screen != SCREEN_USAGE) return;
     update_view_state();
     if (view_state == 1) splash_mini_tick();   // animate the sleeping creature on the idle screen
 
     uint32_t now = lv_tick_get();
 
-    // Title clock: once the daemon has sent wall-clock time, replace "Usage" with
+    // Title clock: once the daemon has sent wall-clock time, replace "Uso" with
     // the live time, advanced locally so it ticks every minute between payloads.
     if (clock_base_epoch > 0) {
         time_t cur = (time_t)(clock_base_epoch + (now - clock_base_ms) / 1000);
@@ -740,19 +1891,28 @@ void ui_tick_anim(void) {
     // Status text by priority. Whimsical messages only when connected & settled.
     const char* text;
     if (!s_ble_connected) {
-        text = "Waiting";              // advertising / waiting for a host connection
+        text = "Aguardando";              // advertising / waiting for a host connection
     } else if (view_state == 1) {      // idle — alternate so it reads as alive AND data-less
-        text = (anim_msg_idx & 1) ? "No data" : "Listening";
+        text = (anim_msg_idx & 1) ? "Sem dados" : "Escutando";
     } else if (now - connected_at_ms < 5000) {
-        text = "Connected";
+        text = "Conectado";
     } else {
         text = anim_messages[anim_msg_idx];
     }
 
-    // All states share the whimsical style: "<glyph> <Title-case word>…"
     static char buf[80];
-    snprintf(buf, sizeof(buf), "%s %s\xE2\x80\xA6",
-             spinner_frames[anim_spinner_idx], text);
+    if (panel_kiro && view_state == 2) {
+        buf[0] = '\0';                     // the three panels use the status line's space
+    } else if (!panel_kiro && kiro_pct >= 0 && view_state == 2 && now - connected_at_ms >= 5000) {
+        // Live usage: the line carries Kiro's credit usage instead of the whimsy.
+        snprintf(buf, sizeof(buf), "Kiro %d%% \xC2\xB7 renova em %dd", kiro_pct, kiro_reset_days);
+        lv_obj_set_style_text_font(lbl_anim, L.reset_font, 0);
+    } else {
+        // All states share the whimsical style: "<glyph> <Title-case word>…"
+        snprintf(buf, sizeof(buf), "%s %s\xE2\x80\xA6",
+                 spinner_frames[anim_spinner_idx], text);
+        lv_obj_set_style_text_font(lbl_anim, L.anim_font, 0);
+    }
     lv_label_set_text(lbl_anim, buf);
 }
 
@@ -763,19 +1923,58 @@ static void apply_battery_visibility(void) {
     else                                  lv_obj_clear_flag(battery_img, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Taps navigate by side: right half goes forward, left half goes back, through
+// Clawd → Uso → Agenda → Consumo 24h → Modelos → Rotinas Automáticas → Criptomoedas → Bovespa
+// → Jogos do Vasco (→ Vasco ao vivo, only during a match) → Clawd. Long lists
+// scroll with a drag instead of paging. A tap pauses auto-rotation so the
+// screen can be read; during a match it returns to the live score after the pause.
+static screen_t step_screen(screen_t from, int dir) {
+    screen_t s = (screen_t)((from + dir + SCREEN_COUNT) % SCREEN_COUNT);
+    if (s == SCREEN_LIVE && !live_active) s = (screen_t)((s + dir + SCREEN_COUNT) % SCREEN_COUNT);
+    return s;
+}
+
 static void global_click_cb(lv_event_t* e) {
     (void)e;
-    if (current_screen == SCREEN_SPLASH) ui_show_screen(prev_non_splash_screen);
-    else                                  ui_show_screen(SCREEN_SPLASH);
+    tap_ms = lv_tick_get();
+    tap_hold = true;
+
+    lv_point_t p = {0, 0};
+    lv_indev_t* indev = lv_indev_active();
+    if (indev) lv_indev_get_point(indev, &p);
+    // A swipe that LVGL didn't turn into a scroll is still not a tap.
+    const int dy = p.y - press_point.y, dx = p.x - press_point.x;
+    if (dy * dy + dx * dx > 20 * 20) return;
+    ui_show_screen(step_screen(current_screen, (p.x < L.scr_w / 2) ? -1 : +1));
 }
 
 void ui_show_screen(screen_t screen) {
     lv_obj_add_flag(usage_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(history_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(models_container, LV_OBJ_FLAG_HIDDEN);
+    for (auto& t : quote_tables) lv_obj_add_flag(t.container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(games_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(routines_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(agenda_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(live_container, LV_OBJ_FLAG_HIDDEN);
     splash_hide();
 
     switch (screen) {
     case SCREEN_SPLASH:  splash_show(); break;
     case SCREEN_USAGE:   lv_obj_clear_flag(usage_container, LV_OBJ_FLAG_HIDDEN); break;
+    case SCREEN_AGENDA:  lv_obj_clear_flag(agenda_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&agenda_list); break;
+    case SCREEN_HISTORY: lv_obj_clear_flag(history_container, LV_OBJ_FLAG_HIDDEN); break;
+    case SCREEN_MODELS:  lv_obj_clear_flag(models_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&models_list); break;
+    case SCREEN_ROUTINES: lv_obj_clear_flag(routines_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&routines_list); break;
+    case SCREEN_CRYPTO:
+    case SCREEN_STOCKS: {
+        QuoteTable& t = quote_tables[screen == SCREEN_CRYPTO ? QUOTES_CRYPTO : QUOTES_STOCKS];
+        lv_obj_clear_flag(t.container, LV_OBJ_FLAG_HIDDEN);
+        scroll_list_show(&t.list);
+        break;
+    }
+    case SCREEN_VASCO:   lv_obj_clear_flag(games_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&games_list); break;
+    case SCREEN_LIVE:    lv_obj_clear_flag(live_container, LV_OBJ_FLAG_HIDDEN); break;
     default: break;
     }
 
@@ -787,6 +1986,7 @@ void ui_show_screen(screen_t screen) {
 
     if (screen != SCREEN_SPLASH) prev_non_splash_screen = screen;
     current_screen = screen;
+    screen_shown_ms = lv_tick_get();
     apply_battery_visibility();
 }
 

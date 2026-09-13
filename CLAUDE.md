@@ -1,3 +1,36 @@
+# Diretrizes do projeto (definidas pelo usuário — sempre seguir)
+
+1. **Listas roláveis, nunca páginas nem cortes.** Toda tela com tabela ou lista
+   que possa ter mais itens do que cabem vira uma lista rolável com o dedo
+   (`ScrollList` em `ui.cpp`: `scroll_list_create` / `_show` / `_tick`). Nada de
+   paginar nem de descartar itens no daemon ou no firmware. Cabeçalho e rodapé
+   ficam fixos; arrastar rola e pausa a rotação; toque curto continua navegando
+   (metade direita avança, esquerda volta); sem toque, a lista desliza sozinha
+   até o fim durante o tempo da tela. Telas que abrem num item relevante
+   (ex.: Agenda na reunião atual) usam `ScrollList.focus`.
+   **Todas as telas** (inclusive Uso, Consumo, jogo ao vivo e a tela inicial)
+   arrastam para cima e para baixo com o dedo (`make_screen_draggable`): se o
+   conteúdo cabe, a tela estica e volta (elástico). Um arraste nunca conta como
+   toque de navegação (`press_point`, limite de 20 px).
+2. **Cores por ferramenta.** Tudo relacionado ao **Claude**: laranja (`COL_ACCENT`,
+   `#d97757`) como cor primária e branco como secundária. Tudo relacionado ao
+   **Kiro**: roxo (`COL_KIRO`, `#9046ff`) como primária e branco como secundária.
+   Números e barras na cor primária, textos/rótulos em branco. Em telas neutras
+   (Agenda, Cripto, Bovespa, Vasco, jogo ao vivo) o destaque segue o mascote na
+   tela (`accent_tick` / `splash_kiro_on_screen`): Kiro → roxo, Clawd → laranja.
+   Cores de dado (séries Claude × Kiro em Consumo 24h e Modelos) são fixas.
+3. **O boneco do Kiro JAMAIS pode usar a camisa do Flamengo.** A única camisa de
+   time permitida é a do Vasco (`kiro_vasco` em `tools/make_kiro_ghost.py`).
+4. Interface sempre em **português**.
+
+Notas de implementação ligadas a essas diretrizes:
+- As listas guardam cada linha como objeto LVGL; o pool interno (`LV_MEM_SIZE`)
+  não comporta mais. Nos envs `guition_4848s040` e `sim` há um pool extra de
+  256 KB na PSRAM (`LV_MEM_POOL_EXPAND_SIZE` + `lv_mem_add_pool` em `main.cpp`).
+  Sem memória, `lv_obj_create` trava num assert em laço infinito — outros envs
+  precisam do mesmo flag antes de rodar esta interface.
+- A placa física do usuário é a Guition ESP32-4848S040 (env `guition_4848s040`).
+
 # Project context
 
 ESP32-S3 / ESP32-C6 firmware for a desk-side Claude Code usage monitor. Each

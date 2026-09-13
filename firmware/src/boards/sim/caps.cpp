@@ -7,7 +7,11 @@ static const BoardCaps caps = {
     .height = LCD_HEIGHT,
     .button_count = 2,      // B and N keys stand in for BOOT + GPIO18
     .has_rotation = false,
+#ifdef SIM_NO_BATTERY
+    .has_battery = false,   // sim_demo: look like a battery-less board (Guition 4848S040)
+#else
     .has_battery = true,    // fake battery, adjustable with -/=
+#endif
     .has_imu = false,
 };
 

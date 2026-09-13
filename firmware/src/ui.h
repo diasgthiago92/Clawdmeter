@@ -5,11 +5,30 @@
 enum screen_t {
     SCREEN_SPLASH,
     SCREEN_USAGE,
+    SCREEN_AGENDA,
+    SCREEN_HISTORY,
+    SCREEN_MODELS,
+    SCREEN_ROUTINES,
+    SCREEN_CRYPTO,
+    SCREEN_STOCKS,
+    SCREEN_VASCO,
+    SCREEN_LIVE,             // only reachable while a Vasco match is on
     SCREEN_COUNT,
 };
 
 void ui_init(void);
 void ui_update(const UsageData* data);
+void ui_update_history_bars(const char* claude, const char* kiro, uint64_t tokens, int requests);
+void ui_update_models(const ModelUsage* models, int count, int kiro_requests);
+enum quote_table_t { QUOTES_CRYPTO, QUOTES_STOCKS, QUOTE_TABLE_COUNT };
+void ui_update_quotes(quote_table_t table, const QuoteRow* rows, int offset, int count, int total);
+void ui_update_stock_index(const char* value, float change_pct);
+void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, bool needs_login);
+void ui_update_routines(const RoutineRow* rows, int offset, int count, int total);
+void ui_update_games(const GameRow* rows, int offset, int count, int total);
+void ui_update_kiro(int percent, int reset_days);  // percent < 0 = hide
+void ui_update_live(const LiveMatch* match);   // nullptr = match over
+
 void ui_tick_anim(void);
 void ui_show_screen(screen_t screen);
 void ui_toggle_splash(void);

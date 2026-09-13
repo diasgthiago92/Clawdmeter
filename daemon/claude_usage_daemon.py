@@ -24,6 +24,18 @@ import httpx
 from bleak import BleakClient
 from bleak.exc import BleakError
 
+from market_quotes import CryptoQuotes, StockQuotes
+from google_agenda import GoogleAgenda
+from kiro_routines import KiroRoutines
+from kiro_usage import KiroActivity, KiroUsage
+from team_fixtures import LiveMatch, TeamFixtures
+from usage_extras import (
+    ModelTokenTally,
+    STACK_HOURS,
+    encode_stacked,
+    session_window_start,
+)
+
 DEVICE_NAME = "Clawdmeter"
 SERVICE_UUID = "4c41555a-4465-7669-6365-000000000001"
 RX_CHAR_UUID = "4c41555a-4465-7669-6365-000000000002"
@@ -536,6 +548,16 @@ class PlanSelector:
 
 # Module-level so the active-plan state survives reconnects.
 _SELECTOR = PlanSelector()
+_MODEL_TALLY = ModelTokenTally()
+_CRYPTO = CryptoQuotes()
+_STOCKS = StockQuotes()
+_FIXTURES = TeamFixtures()
+_LIVE = LiveMatch(_FIXTURES)
+_KIRO = KiroUsage()
+_KIRO_ACTIVITY = KiroActivity()
+_ROUTINES = KiroRoutines()
+_AGENDA = GoogleAgenda()
+EXTRA_WRITE_GAP_S = 0.4
 
 
 async def poll_active(selector: PlanSelector = _SELECTOR) -> tuple[dict | None, bool]:
@@ -627,6 +649,52 @@ class Session:
         except BleakError as e:
             log(f"Write failed: {e}")
             return False
+
+    async def write_live(self) -> None:
+        """Live score for a match in progress (throttled inside LiveMatch)."""
+        try:
+            live = await _LIVE.poll(time.time())
+        except (httpx.HTTPError, ValueError) as e:
+            log(f"Live match data unavailable: {e}")
+            return
+        if live is not None:
+            await self.write_payload(live)
+
+    async def write_extras(self, payload: dict) -> None:
+        """History, per-model and market-table writes that follow a successful usage write.
+
+        The firmware keeps a single RX buffer, so space the writes out enough
+        for its main loop to consume each one before the next lands.
+        """
+        now = time.time()
+        extras = []
+        since = session_window_start(payload, now)
+        kiro_requests, kiro_hourly = 0, [0] * STACK_HOURS
+        try:
+            _, kiro_requests = _KIRO_ACTIVITY.payloads(now, since)
+            kiro_hourly = _KIRO_ACTIVITY.hourly(now, STACK_HOURS)
+        except OSError as e:
+            log(f"Kiro activity unavailable: {e}")
+        try:
+            config_dirs = read_config_dirs()
+            claude_hourly = _MODEL_TALLY.hourly(config_dirs, now)
+            # History screen: stacked hourly bars, Claude tokens + Kiro requests.
+            extras.append({"hb": encode_stacked(claude_hourly, kiro_hourly),
+                           "tc": sum(claude_hourly), "tk": sum(kiro_hourly)})
+            extras.append({"m": _MODEL_TALLY.top(config_dirs, since), "mk": kiro_requests})
+        except OSError as e:
+            log(f"Model tally failed: {e}")
+        extras.append(_KIRO.get(now))
+        for label, source in (("Crypto", _CRYPTO), ("Stock", _STOCKS), ("Fixtures", _FIXTURES), ("Routines", _ROUTINES), ("Agenda", _AGENDA)):
+            try:
+                extras.extend(await source.get(now))
+            except (httpx.HTTPError, ValueError) as e:
+                log(f"{label} data unavailable: {e}")
+                extras.extend(source.payloads)
+        for extra in extras:
+            await asyncio.sleep(EXTRA_WRITE_GAP_S)
+            if not await self.write_payload(extra):
+                return
 
 
 def _is_encryption_error(exc: BaseException) -> bool:
@@ -771,6 +839,7 @@ async def connect_and_run(target, stop_event: asyncio.Event) -> bool:
                     if await session.write_payload(payload):
                         last_poll = time.time()
                         used_successfully = True
+                        await session.write_extras(payload)
                 elif dead:
                     # No live token in any config dir (missing, or a 401/expired
                     # token) -> show "No data" now instead of stale numbers. Guard
@@ -785,6 +854,9 @@ async def connect_and_run(target, stop_event: asyncio.Event) -> bool:
                     # Transient poll failure (a live token that didn't answer this
                     # cycle) -> stay silent and retry next tick.
                     log("No usable config dir this cycle")
+
+            if used_successfully:
+                await session.write_live()
 
             try:
                 await asyncio.wait_for(session.refresh_requested.wait(), timeout=TICK)

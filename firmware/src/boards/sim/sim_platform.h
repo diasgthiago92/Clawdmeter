@@ -24,3 +24,14 @@ void sim_playback_toggle(void);
 void sim_playback_step(int dir);
 void sim_playback_jump(int idx);      // 0-based
 void sim_playback_toggle_link(void);  // BLE connected <-> disconnected
+
+// Demo recording (display.cpp): SIM_RECORD=<out.mp4> pipes the frame to ffmpeg
+// at SIM_RECORD_FPS (default 15). Called once per loop from sim_pump().
+void sim_display_record_tick(void);
+void sim_display_record_stop(void);
+void sim_request_quit(void);
+
+// Scripted taps for demos/tests ("tap": [x, y] in a scenario line).
+void sim_inject_tap(int x, int y);
+void sim_inject_drag(int x, int y0, int y1, int ms);   // "drag": [x, y0, y1, ms]
+bool sim_injected_touch(int* x, int* y);
