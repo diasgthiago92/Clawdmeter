@@ -132,7 +132,8 @@ static bool handle_extra_json(const char* json) {
     if (deserializeJson(doc, json)) return false;
 
     if (doc["hb"].is<JsonArray>()) {         // stacked hourly bars: Claude tokens + Kiro requests
-        ui_update_history_bars(doc["hb"][0] | "", doc["hb"][1] | "", doc["tc"] | (uint64_t)0, doc["tk"] | 0);
+        ui_update_history_bars(doc["hb"][0] | "", doc["hb"][1] | "", doc["hb"][2] | "",
+                               doc["tc"] | (uint64_t)0, doc["tk"] | 0, doc["ta"] | (uint64_t)0);
         return true;
     }
     if (doc["m"].is<JsonArray>()) {
@@ -145,7 +146,7 @@ static bool handle_extra_json(const char* json) {
             models[n].tokens = row[1] | (uint64_t)0;
             n++;
         }
-        ui_update_models(models, n, doc["mk"] | 0);
+        ui_update_models(models, n, doc["mk"] | 0, doc["ma"] | (uint64_t)0);
         return true;
     }
     if (doc["g"].is<JsonArray>()) {
@@ -195,6 +196,10 @@ static bool handle_extra_json(const char* json) {
     }
     if (!doc["cos"].isNull()) {              // the day's costume (Vasco match day / holidays)
         splash_set_costume(doc["cos"] | 0);
+        return true;
+    }
+    if (doc["ag"].is<JsonArray>()) {          // Antigravity today: [tokens, % of busiest day, responses]
+        ui_update_antigravity(doc["ag"][0] | (uint64_t)0, doc["ag"][1] | 0, doc["ag"][2] | 0);
         return true;
     }
     if (!doc["k"].isNull()) {                // Kiro credits: [percent, days to reset] or 0

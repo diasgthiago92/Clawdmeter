@@ -18,7 +18,10 @@
    Números e barras na cor primária, textos/rótulos em branco. Em telas neutras
    (Agenda, Cripto, Bovespa, Vasco, jogo ao vivo) o destaque segue o mascote na
    tela (`accent_tick` / `splash_kiro_on_screen`): Kiro → roxo, Clawd → laranja.
-   Cores de dado (séries Claude × Kiro em Consumo 24h e Modelos) são fixas.
+   **Antigravity**: azul-claro (`COL_AG`, `#64b5f6`) como primária e branco como
+   secundária (tokens do Antigravity CLI lidos de `~/.gemini/antigravity-cli`,
+   `daemon/antigravity_usage.py`). Aparece em Uso (painel), Consumo 24h e Modelos.
+   Cores de dado (séries Claude × Kiro × Antigravity em Consumo 24h e Modelos) são fixas.
 3. **O boneco do Kiro JAMAIS pode usar a camisa do Flamengo.** A única camisa de
    time permitida é a do Vasco (`kiro_vasco` em `tools/make_kiro_ghost.py`).
    **Fantasias do dia, sempre nos dois mascotes (Clawd e Kiro)** — o daemon manda

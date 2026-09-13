@@ -19,8 +19,10 @@ enum screen_t {
 
 void ui_init(void);
 void ui_update(const UsageData* data);
-void ui_update_history_bars(const char* claude, const char* kiro, uint64_t tokens, int requests);
-void ui_update_models(const ModelUsage* models, int count, int kiro_requests);
+void ui_update_history_bars(const char* claude, const char* kiro, const char* ag,
+                            uint64_t tokens, int requests, uint64_t ag_tokens);
+void ui_update_antigravity(uint64_t tokens_today, int pct_of_peak, int responses);
+void ui_update_models(const ModelUsage* models, int count, int kiro_requests, uint64_t ag_tokens);
 enum quote_table_t { QUOTES_CRYPTO, QUOTES_STOCKS, QUOTES_FIIS, QUOTE_TABLE_COUNT };
 void ui_update_quotes(quote_table_t table, const QuoteRow* rows, int offset, int count, int total);
 void ui_update_stock_index(const char* value, float change_pct);

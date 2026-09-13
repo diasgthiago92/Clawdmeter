@@ -25,6 +25,7 @@ from bleak import BleakClient
 from bleak.exc import BleakError
 
 from market_quotes import CryptoQuotes, FiiQuotes, StockQuotes
+from antigravity_usage import AntigravityUsage
 from costumes import costume_for
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines
@@ -558,6 +559,7 @@ _LIVE = LiveMatch(_FIXTURES)
 _KIRO = KiroUsage()
 _KIRO_ACTIVITY = KiroActivity()
 _ROUTINES = KiroRoutines()
+_ANTIGRAVITY = AntigravityUsage()
 _AGENDA = GoogleAgenda()
 EXTRA_WRITE_GAP_S = 0.4
 
@@ -677,13 +679,22 @@ class Session:
             kiro_hourly = _KIRO_ACTIVITY.hourly(now, STACK_HOURS)
         except OSError as e:
             log(f"Kiro activity unavailable: {e}")
+        ag_hourly, ag_window = [0] * STACK_HOURS, 0
+        try:
+            # Antigravity CLI: tokens per hour, in the 5h window, and today's panel.
+            ag_hourly = _ANTIGRAVITY.hourly(now, STACK_HOURS)
+            ag_window = _ANTIGRAVITY.since(since)
+            ag_today, ag_responses, ag_peak = _ANTIGRAVITY.today(now)
+            extras.append({"ag": [ag_today, min(100, round(ag_today * 100 / ag_peak)) if ag_peak else 0, ag_responses]})
+        except OSError as e:
+            log(f"Antigravity usage unavailable: {e}")
         try:
             config_dirs = read_config_dirs()
             claude_hourly = _MODEL_TALLY.hourly(config_dirs, now)
-            # History screen: stacked hourly bars, Claude tokens + Kiro requests.
-            extras.append({"hb": encode_stacked(claude_hourly, kiro_hourly),
-                           "tc": sum(claude_hourly), "tk": sum(kiro_hourly)})
-            extras.append({"m": _MODEL_TALLY.top(config_dirs, since), "mk": kiro_requests})
+            # Consumo 24h: stacked hourly bars, Claude tokens + Kiro requests + Antigravity tokens.
+            extras.append({"hb": encode_stacked(claude_hourly, kiro_hourly, ag_hourly),
+                           "tc": sum(claude_hourly), "tk": sum(kiro_hourly), "ta": sum(ag_hourly)})
+            extras.append({"m": _MODEL_TALLY.top(config_dirs, since), "mk": kiro_requests, "ma": ag_window})
         except OSError as e:
             log(f"Model tally failed: {e}")
         extras.append(_KIRO.get(now))
