@@ -285,6 +285,7 @@ static const RotationStep ROTATION[] = {
     {SCREEN_ROUTINES, 12000},
     {SCREEN_CRYPTO,  24000},   // 20%
     {SCREEN_STOCKS,  12000},   // 10%
+    {SCREEN_FIIS,    12000},
     {SCREEN_VASCO,   12000},   // 10%
 };
 #define ROTATION_COUNT        (sizeof(ROTATION) / sizeof(ROTATION[0]))
@@ -1059,6 +1060,19 @@ static void init_market_screens(lv_obj_t* scr) {
     init_quote_screen(scr, &quote_tables[QUOTES_STOCKS], "Bovespa",
                       stock_headers, stock_cols, 5, L.table_font_dense,
                       "Yahoo (15 min) · Fundamentus");
+
+    // FII prices run to three integer digits, so the name column gives way.
+    static const char* const fii_headers[5] = {"Fundo", "Nome", "R$", "Dia", "P/VP"};
+    static const QuoteColumn fii_cols[5] = {
+        {0, 212, LV_TEXT_ALIGN_LEFT, 0},
+        {224, 480, LV_TEXT_ALIGN_LEFT, 1},
+        {480, 675, LV_TEXT_ALIGN_RIGHT, 2},
+        {675, 850, LV_TEXT_ALIGN_RIGHT, QUOTE_CHANGE},
+        {850, 1000, LV_TEXT_ALIGN_RIGHT, 3},
+    };
+    init_quote_screen(scr, &quote_tables[QUOTES_FIIS], "Fundos Imobiliários",
+                      fii_headers, fii_cols, 5, L.table_font_dense,
+                      "Yahoo (15 min) · Fundamentus");
 }
 
 static void render_quote_table(QuoteTable& t) {
@@ -1830,6 +1844,7 @@ static void lists_tick(void) {
     case SCREEN_ROUTINES: scroll_list_tick(&routines_list, dwell); break;
     case SCREEN_CRYPTO:   scroll_list_tick(&quote_tables[QUOTES_CRYPTO].list, dwell); break;
     case SCREEN_STOCKS:   scroll_list_tick(&quote_tables[QUOTES_STOCKS].list, dwell); break;
+    case SCREEN_FIIS:     scroll_list_tick(&quote_tables[QUOTES_FIIS].list, dwell); break;
     case SCREEN_VASCO:    scroll_list_tick(&games_list, dwell); break;
     default: break;
     }
@@ -1941,7 +1956,8 @@ static void apply_battery_visibility(void) {
 }
 
 // Taps navigate by side: right half goes forward, left half goes back, through
-// Clawd → Uso → Agenda → Consumo 24h → Modelos → Rotinas Automáticas → Criptomoedas → Bovespa
+// Clawd → Uso → Agenda → Consumo 24h → Modelos → Rotinas Automáticas → Criptomoedas → Bovespa → FIIs
+// → Fundos Imobiliários
 // → Jogos do Vasco (→ Vasco ao vivo, only during a match) → Clawd. Long lists
 // scroll with a drag instead of paging. A tap pauses auto-rotation so the
 // screen can be read; during a match it returns to the live score after the pause.
@@ -1984,8 +2000,10 @@ void ui_show_screen(screen_t screen) {
     case SCREEN_MODELS:  lv_obj_clear_flag(models_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&models_list); break;
     case SCREEN_ROUTINES: lv_obj_clear_flag(routines_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&routines_list); break;
     case SCREEN_CRYPTO:
-    case SCREEN_STOCKS: {
-        QuoteTable& t = quote_tables[screen == SCREEN_CRYPTO ? QUOTES_CRYPTO : QUOTES_STOCKS];
+    case SCREEN_STOCKS:
+    case SCREEN_FIIS: {
+        QuoteTable& t = quote_tables[screen == SCREEN_CRYPTO ? QUOTES_CRYPTO
+                                     : screen == SCREEN_STOCKS ? QUOTES_STOCKS : QUOTES_FIIS];
         lv_obj_clear_flag(t.container, LV_OBJ_FLAG_HIDDEN);
         scroll_list_show(&t.list);
         break;

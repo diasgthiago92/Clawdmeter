@@ -31,7 +31,7 @@ struct ModelUsage {
 // One row of the crypto / B3 tables: pre-formatted cells + change %.
 // A table holds up to QUOTE_TABLE_ROWS and shows QUOTE_PAGE_ROWS at a time.
 #define QUOTE_PAGE_ROWS  8
-#define QUOTE_TABLE_ROWS 24
+#define QUOTE_TABLE_ROWS 48
 #define QUOTE_CELLS      4
 
 #define GAMES_MAX 10
