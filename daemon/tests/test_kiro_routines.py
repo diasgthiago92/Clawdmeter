@@ -1,0 +1,39 @@
+import datetime
+
+from daemon.kiro_routines import build_rows, load_token, routine_of
+
+
+def test_routine_of_titles_and_status():
+    assert routine_of(":bar_chart: *Relatório diário* — resumo do dia 12/09/2026") == ("Relatório diário", True)
+    assert routine_of(":white_check_mark: *Board semanal* atualizado e em dia") == ("Board semanal", True)
+    assert routine_of(":mailbox_with_mail: *Organização de e-mails* — 13/09 09:00") == ("Organização e-mails", True)
+    assert routine_of("Seu consumo mensal é de 12345") == ("Consumo mensal", True)
+    assert routine_of(":white_check_mark: Backup local concluído (13/09 10:31)") == ("Backup local", True)
+    assert routine_of(":white_check_mark: Backup .kiro → Drive concluído") == ("Backup Drive", True)
+    assert routine_of(":x: Falha no backup .kiro → Drive (2026-09-12 10:30): timed out") == ("Backup Drive", False)
+    assert routine_of("") is None
+
+
+def test_build_rows_latest_first_with_counts():
+    def ts(h, m):
+        return str(datetime.datetime(2026, 9, 13, h, m).timestamp())
+
+    rows = build_rows([
+        {"ts": ts(11, 0), "text": ":white_check_mark: *Board semanal* atualizado"},
+        {"ts": ts(10, 0), "text": ":white_check_mark: *Board semanal* atualizado"},
+        {"ts": ts(10, 53), "text": ":x: Falha no backup .kiro → Drive: timeout"},
+        {"ts": ts(9, 0), "text": ":mailbox_with_mail: *Organização de e-mails* — 13/09"},
+        {"ts": ts(8, 0), "text": ""},
+    ])
+    assert rows == [
+        ["Board semanal", "11:00", 1, 2],
+        ["Backup Drive", "10:53", 0, 1],
+        ["Organização e-mails", "09:00", 1, 1],
+    ]
+
+
+def test_load_token(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("OTHER=1\nSLACK_BOT_TOKEN='xoxb-test'\n")
+    assert load_token(env) == "xoxb-test"
+    assert load_token(tmp_path / "missing") is None

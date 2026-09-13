@@ -20,6 +20,30 @@ bool sim_take_pwr_released(void) { return take(&edge_released); }
 int  sim_battery_pct(void) { return battery; }
 bool sim_charging(void)    { return charging; }
 bool sim_should_quit(void) { return quit; }
+void sim_request_quit(void) { quit = true; }
+
+static int      tap_x = 0, tap_y = 0;
+static int      drag_y0 = 0, drag_y1 = 0;
+static uint32_t drag_start = 0, drag_ms = 0;
+static uint32_t tap_until = 0;
+void sim_inject_tap(int x, int y) { tap_x = x; tap_y = y; drag_ms = 0; tap_until = millis() + 80; }
+void sim_inject_drag(int x, int y0, int y1, int ms) {
+    tap_x = x; drag_y0 = y0; drag_y1 = y1;
+    drag_ms = ms > 0 ? ms : 1;
+    drag_start = millis();
+    tap_until = drag_start + drag_ms;
+}
+bool sim_injected_touch(int* x, int* y) {
+    *x = tap_x;
+    *y = tap_y;
+    const uint32_t now = millis();
+    if (drag_ms && now - drag_start <= drag_ms) {
+        *y = drag_y0 + (int)((int64_t)(drag_y1 - drag_y0) * (now - drag_start) / drag_ms);
+        return true;
+    }
+    if (drag_ms && now - drag_start > drag_ms) drag_ms = 0;
+    return tap_until && now < tap_until;
+}
 
 // Matches the AXP2101 long-press threshold main.cpp's pair gesture expects.
 #define PWR_LONG_MS 1500
@@ -60,6 +84,8 @@ void sim_pump(void) {
         pwr_long_fired = true;
         edge_long = true;
     }
+
+    sim_display_record_tick();
 
     // Headless CI hook: SIM_AUTOSHOT_MS=<ms> → screenshot + exit.
     static long autoshot_ms = -2;

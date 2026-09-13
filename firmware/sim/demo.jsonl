@@ -1,0 +1,31 @@
+# Demo roteirizado para gravação: SIM_RECORD=demo.mp4 com o env sim_demo.
+{"name":"usage","hold_ms":40,"s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+{"name":"history","hold_ms":40,"h":"--------------loqtwy1469ADFILNQTVYadgiloqtwy1469ADFILNQTVYadgiACDFHIKLNPQSUVXZacdfhikmnprsuwxz02"}
+{"name":"kiro history","hold_ms":40,"hk":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEOdt5/90mXJBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACLZp2++3qbAAAAA","kp":14}
+{"name":"models","hold_ms":40,"m":[["Opus 5",3922893],["Sonnet 5",812004],["Haiku 4.5",96120]],"mk":37}
+{"name":"kiro credits","hold_ms":40,"k":[36,18]}
+{"name":"crypto 1","hold_ms":40,"x":[["BTC","393.121","76.777",-0.7],["ETH","12.702","2.481",-2.1],["BNB","3.667","716,21",-2.7],["SOL","510,79","99,76",2.4]],"o":0,"n":8}
+{"name":"crypto 2","hold_ms":40,"x":[["XRP","6,87","1,34",1.1],["ADA","1,05","0,2048",-2.1],["DOGE","0,4273","0,0835",3.8],["LTC","274,15","53,54",-0.8]],"o":4,"n":8}
+{"name":"stocks 0","hold_ms":40,"b":[["PETR4","Petrobras","49,00","1,31",-0.2],["VALE3","Vale","78,20","1,77",0.4],["ITUB4","Itaú","42,73","2,27",0.9]],"o":0,"n":18,"i":["187.207",-0.6]}
+{"name":"stocks 3","hold_ms":40,"b":[["BBDC4","Bradesco","18,59","1,12",0.6],["BBAS3","BB","22,49","0,71",-1.4],["ROXO34","Nubank","12,45","-",-2.0]],"o":3,"n":18}
+{"name":"stocks 6","hold_ms":40,"b":[["ABEV3","Ambev","15,62","2,74",-0.8],["WEGE3","WEG","51,49","11,46",-1.3],["B3SA3","B3","17,28","4,66",-2.2]],"o":6,"n":18}
+{"name":"stocks 9","hold_ms":40,"b":[["KLBN11","Klabin","19,54","2,57",-0.2],["TAEE11","Taesa","40,73","1,74",-1.4],["POMO4","Marcopolo","4,50","1,33",-1.7]],"o":9,"n":18}
+{"name":"stocks 12","hold_ms":40,"b":[["BHIA3","Casas Bahia","0,76","-0,09",4.1],["GGBR4","Gerdau","26,10","0,96",0.3],["MGLU3","Magalu","5,76","0,40",-3.0]],"o":12,"n":18}
+{"name":"stocks 15","hold_ms":40,"b":[["ISAE4","ISA Energia","27,72","0,88",-1.3],["CEAB3","C&A","9,35","0,76",-0.1],["COGN3","Cogna","2,33","0,35",-2.1]],"o":15,"n":18}
+{"name":"games 1","hold_ms":40,"v":[["Santa Fe","C","Ter 15/09 19:00","Sul-Americana"],["Coritiba","C","Sáb 19/09 20:30","Brasileirão"]],"o":0,"n":4}
+{"name":"games 2","hold_ms":40,"v":[["Botafogo","F","Qua 07/10 20:30","Brasileirão"],["Remo","C","Sáb 10/10 17:00","Brasileirão"]],"o":2,"n":4}
+{"name":"tela inicial","hold_ms":47000,"s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+{"name":"uso + mascote","hold_ms":36000,"screen":"usage","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+{"name":"history","hold_ms":6000,"screen":"history","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+{"name":"models","hold_ms":6000,"screen":"models","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+{"name":"crypto","hold_ms":7000,"screen":"crypto","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+{"name":"stocks","hold_ms":11000,"screen":"stocks","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+{"name":"vasco","hold_ms":6000,"screen":"vasco","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+{"name":"jogo ao vivo","hold_ms":4000,"l":["Vasco","Santa Fe",0,0,"12'","1º tempo","Sul-Americana"]}
+{"name":"jogo ao vivo","hold_ms":6000,"l":["Vasco","Santa Fe",1,0,"23'","1º tempo","Sul-Americana"]}
+{"name":"jogo ao vivo","hold_ms":3000,"l":["Vasco","Santa Fe",1,0,"","Intervalo","Sul-Americana"]}
+{"name":"jogo ao vivo","hold_ms":4000,"l":["Vasco","Santa Fe",1,1,"58'","2º tempo","Sul-Americana"]}
+{"name":"jogo ao vivo","hold_ms":6000,"l":["Vasco","Santa Fe",2,1,"84'","2º tempo","Sul-Americana"]}
+{"name":"jogo ao vivo","hold_ms":3000,"l":["Vasco","Santa Fe",2,1,"90'+4'","2º tempo","Sul-Americana"]}
+{"name":"fim de jogo","hold_ms":5000,"l":0}
+{"name":"fim","hold_ms":1000,"quit":true}

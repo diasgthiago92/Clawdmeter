@@ -24,6 +24,10 @@ void splash_pick_for_current_rate(void);
 // True when splash is currently rendering (used to gate re-picks).
 bool splash_is_active(void);
 
+// True while the Kiro ghost (plain or Vasco shirt) is the character on screen:
+// its splash turn when the splash shows, its corner turn otherwise.
+bool splash_kiro_on_screen(void);
+
 // Root container (so ui.cpp can attach a click event).
 lv_obj_t* splash_get_root(void);
 

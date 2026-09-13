@@ -4,6 +4,7 @@
 // parsing, usage-rate tracking, and the chime trigger all run for real.
 #include "../../ble.h"
 #include "sim_platform.h"
+#include "../../ui.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <stdio.h>
@@ -110,9 +111,31 @@ void ble_clear_bonds(void) { printf("[sim] pair gesture completed — bonds clea
 bool ble_has_bonds(void)   { return true; }
 
 bool ble_has_data(void) { return connected && pending; }
+// Demo scripting keys, acted on here and ignored by main's parser:
+// "screen": name → jump to that screen; "tap": [x, y] → touch there; "drag": [x, y0, y1, ms] → swipe; "quit": true → end the run.
+static void apply_script_keys(const char* json) {
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return;
+    if (doc["quit"] | false) sim_request_quit();
+    if (doc["tap"].is<JsonArray>()) sim_inject_tap(doc["tap"][0] | 0, doc["tap"][1] | 0);
+    if (doc["drag"].is<JsonArray>())
+        sim_inject_drag(doc["drag"][0] | 0, doc["drag"][1] | 0, doc["drag"][2] | 0, doc["drag"][3] | 300);
+    const char* screen = doc["screen"] | (const char*)NULL;
+    if (!screen) return;
+    static const struct { const char* name; screen_t s; } SCREENS[] = {
+        {"splash", SCREEN_SPLASH}, {"usage", SCREEN_USAGE}, {"agenda", SCREEN_AGENDA}, {"history", SCREEN_HISTORY},
+        {"models", SCREEN_MODELS}, {"routines", SCREEN_ROUTINES}, {"crypto", SCREEN_CRYPTO}, {"stocks", SCREEN_STOCKS},
+        {"vasco", SCREEN_VASCO},
+    };
+    for (const auto& e : SCREENS) {
+        if (strcmp(e.name, screen) == 0) ui_show_screen(e.s);
+    }
+}
+
 const char* ble_get_data(void) {
     pending = false;
     delivered_ms = millis();
+    apply_script_keys(states[cur].json);
     return states[cur].json;
 }
 void ble_send_ack(void)  {}
