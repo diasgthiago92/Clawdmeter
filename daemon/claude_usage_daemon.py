@@ -25,6 +25,7 @@ from bleak import BleakClient
 from bleak.exc import BleakError
 
 from market_quotes import CryptoQuotes, StockQuotes
+from costumes import costume_for
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines
 from kiro_usage import KiroActivity, KiroUsage
@@ -691,8 +692,10 @@ class Session:
             except (httpx.HTTPError, ValueError) as e:
                 log(f"{label} data unavailable: {e}")
                 extras.extend(source.payloads)
-        # Vasco match day: Clawd and the Kiro ghost wear the Vasco shirt on the device.
-        extras.append({"vd": int(is_match_day(_FIXTURES.events, datetime.datetime.now(datetime.timezone.utc)))})
+        # The day's costume for Clawd and the Kiro ghost: Vasco shirt on match days,
+        # Santa / passista / witch on Christmas, Carnaval and Halloween.
+        utc_now = datetime.datetime.now(datetime.timezone.utc)
+        extras.append({"cos": costume_for(utc_now.astimezone().date(), is_match_day(_FIXTURES.events, utc_now))})
         for extra in extras:
             await asyncio.sleep(EXTRA_WRITE_GAP_S)
             if not await self.write_payload(extra):

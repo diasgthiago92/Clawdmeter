@@ -193,8 +193,8 @@ static bool handle_extra_json(const char* json) {
         ui_update_games(games, doc["o"] | 0, n, doc["n"] | n);
         return true;
     }
-    if (!doc["vd"].isNull()) {               // Vasco match day: shirts on
-        splash_set_vasco_day((doc["vd"] | 0) != 0);
+    if (!doc["cos"].isNull()) {              // the day's costume (Vasco match day / holidays)
+        splash_set_costume(doc["cos"] | 0);
         return true;
     }
     if (!doc["k"].isNull()) {                // Kiro credits: [percent, days to reset] or 0
