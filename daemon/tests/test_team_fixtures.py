@@ -87,3 +87,15 @@ def test_watch_candidates_window():
         {"id": 4, "date": "2026-09-15T18:00Z", "league": {"slug": "bra.1"}},   # 5h ago
     ]})
     assert [c[0] for c in watch_candidates(events, now)] == ["1", "2"]
+
+
+def test_is_match_day_uses_local_calendar_day():
+    from daemon.team_fixtures import is_match_day
+
+    tz = datetime.timezone(datetime.timedelta(hours=-3))
+    kickoff = datetime.datetime(2026, 9, 15, 19, 0, tzinfo=tz)
+    events = {"1": ("conmebol.sudamericana", kickoff)}
+    assert is_match_day(events, datetime.datetime(2026, 9, 15, 8, 0, tzinfo=tz))
+    assert is_match_day(events, datetime.datetime(2026, 9, 15, 23, 50, tzinfo=tz))
+    assert not is_match_day(events, datetime.datetime(2026, 9, 14, 12, 0, tzinfo=tz))
+    assert not is_match_day({}, datetime.datetime(2026, 9, 15, 12, 0, tzinfo=tz))

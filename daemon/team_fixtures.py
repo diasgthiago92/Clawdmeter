@@ -152,10 +152,11 @@ class TeamFixtures(_Refreshing):
         resp.raise_for_status()
         schedule = resp.json()
         now = datetime.datetime.now(datetime.timezone.utc)
-        self.events = {
+        today = now.astimezone().date()
+        self.events = {   # keep today's matches all day (match-day shirts), others until they're over
             event_id: (slug, start)
             for event_id, (slug, start) in {**self.events, **schedule_events(schedule)}.items()
-            if (now - start).total_seconds() <= LIVE_MAX_S
+            if (now - start).total_seconds() <= LIVE_MAX_S or start.astimezone().date() == today
         }
         rows = build_rows(schedule, TEAM_ESPN_ID, now)
         return chunk_table("v", rows) if rows else [{"v": [], "o": 0, "n": 0}]
@@ -197,3 +198,9 @@ class LiveMatch:
             return None
         self.live = False
         return {"l": 0}
+
+
+def is_match_day(events: dict[str, tuple[str, datetime.datetime]], now: datetime.datetime) -> bool:
+    """True when the team plays on the local calendar day of `now`."""
+    today = now.astimezone().date()
+    return any(start.astimezone().date() == today for _, start in events.values())
