@@ -8,6 +8,7 @@
 #include "hal/display_hal.h"
 #include <Arduino.h>
 #include <string.h>
+#include <stdint.h>
 #include <esp_heap_caps.h>
 
 // 60×60 stage. CELL sized so the canvas fits the smaller display dimension —
@@ -1092,6 +1093,58 @@ void splash_pick_for_current_rate(void) {
     const splash_anim_def_t *a = &splash_anims[cur_anim];
     anim_reset(a);
     render_frame(compose_stage(a, 0), a->palette);
+}
+
+// ─── Flying ghost (idle screen, Kiro's turn) ─────────────────────────────────
+#define FLYER_PX_PER_S 90
+static lv_obj_t      *flyer_img = NULL;
+static lv_image_dsc_t flyer_dsc;
+static uint8_t       *flyer_buf = NULL;
+static int            flyer_cell = 4, flyer_x = INT32_MIN, flyer_dir = +1;
+static uint16_t       flyer_frame = 0;
+static uint32_t       flyer_frame_ms = 0, flyer_move_ms = 0;
+static const splash_anim_def_t *flyer_anim = NULL;
+
+lv_obj_t* splash_flyer_create(lv_obj_t *parent, int px) {
+    flyer_cell = px / kiro_ghost_anim.h;
+    if (flyer_cell < 1) flyer_cell = 1;
+    const size_t bytes = (size_t)(kiro_ghost_anim.w * flyer_cell) * (kiro_ghost_anim.h * flyer_cell) * 3;
+#ifdef BOARD_HAS_PSRAM
+    flyer_buf = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+#else
+    flyer_buf = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+#endif
+    if (!flyer_buf) return NULL;
+    flyer_img = lv_image_create(parent);
+    lv_obj_add_flag(flyer_img, LV_OBJ_FLAG_HIDDEN);
+    return flyer_img;
+}
+
+void splash_flyer_tick(int left, int right, int center_y) {
+    if (!flyer_img || !flyer_buf) return;
+    const uint32_t now = millis();
+    // Same outfit as the corner ghost's current turn.
+    const splash_anim_def_t *a = (mas_mode == MAS_KIRO && mas_anim) ? mas_anim : &kiro_ghost_anim;
+    const int w = a->w * flyer_cell, h = a->h * flyer_cell;
+    bool redraw = a != flyer_anim;
+    flyer_anim = a;
+    if (flyer_x == INT32_MIN) { flyer_x = left; flyer_move_ms = now; redraw = true; }
+    if (now - flyer_frame_ms >= a->holds[flyer_frame % a->frame_count]) {
+        flyer_frame = (flyer_frame + 1) % a->frame_count;
+        flyer_frame_ms = now;
+        redraw = true;
+    }
+    const int step = (int)((now - flyer_move_ms) * FLYER_PX_PER_S / 1000);
+    if (step > 0) {
+        flyer_move_ms = now;
+        flyer_x += flyer_dir * step;
+        if (flyer_x >= right - w) { flyer_x = right - w; flyer_dir = -1; redraw = true; }
+        if (flyer_x <= left)      { flyer_x = left;      flyer_dir = +1; redraw = true; }
+        if (!redraw) lv_obj_set_pos(flyer_img, flyer_x, center_y - h / 2);
+    }
+    if (redraw)
+        mas_render(a, flyer_frame, flyer_dir < 0, &flyer_dsc, flyer_buf, flyer_img,
+                   flyer_cell, flyer_x, center_y + h / 2);
 }
 
 bool splash_is_active(void) { return active; }
