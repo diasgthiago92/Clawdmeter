@@ -92,25 +92,6 @@ void ble_init(void) {
     refresh_title();
 }
 
-void ble_tick(void) {
-    if (!connected || pending || !playing || n_states == 0) return;
-    if (millis() - delivered_ms >= states[cur].hold_ms) {
-        cur = (cur + 1) % n_states;
-        pending = true;
-        refresh_title();
-    }
-}
-
-ble_state_t ble_get_state(void) {
-    return connected ? BLE_STATE_CONNECTED : BLE_STATE_DISCONNECTED;
-}
-const char* ble_get_device_name(void) { return "Clawdmeter (sim)"; }
-const char* ble_get_mac_address(void) { return "00:51:4D:00:00:01"; }
-
-void ble_clear_bonds(void) { printf("[sim] pair gesture completed — bonds cleared\n"); }
-bool ble_has_bonds(void)   { return true; }
-
-bool ble_has_data(void) { return connected && pending; }
 // Demo scripting keys, acted on here and ignored by main's parser:
 // "screen": name → jump to that screen; "tap": [x, y] → touch there; "drag": [x, y0, y1, ms] → swipe; "quit": true → end the run.
 static void apply_script_keys(const char* json) {
@@ -132,6 +113,43 @@ static void apply_script_keys(const char* json) {
     }
 }
 
+// A line with only scripting keys is acted on without being delivered as a
+// payload (main would otherwise parse it as a failed usage update).
+static bool script_only(const char* json) {
+    JsonDocument doc;
+    if (deserializeJson(doc, json)) return false;
+    for (JsonPair kv : doc.as<JsonObject>()) {
+        const char* k = kv.key().c_str();
+        if (strcmp(k, "name") && strcmp(k, "hold_ms") && strcmp(k, "screen") &&
+            strcmp(k, "tap") && strcmp(k, "drag") && strcmp(k, "quit")) return false;
+    }
+    return true;
+}
+
+void ble_tick(void) {
+    if (!connected || pending || !playing || n_states == 0) return;
+    if (millis() - delivered_ms >= states[cur].hold_ms) {
+        cur = (cur + 1) % n_states;
+        refresh_title();
+        if (script_only(states[cur].json)) {
+            apply_script_keys(states[cur].json);
+            delivered_ms = millis();
+        } else {
+            pending = true;
+        }
+    }
+}
+
+ble_state_t ble_get_state(void) {
+    return connected ? BLE_STATE_CONNECTED : BLE_STATE_DISCONNECTED;
+}
+const char* ble_get_device_name(void) { return "Clawdmeter (sim)"; }
+const char* ble_get_mac_address(void) { return "00:51:4D:00:00:01"; }
+
+void ble_clear_bonds(void) { printf("[sim] pair gesture completed — bonds cleared\n"); }
+bool ble_has_bonds(void)   { return true; }
+
+bool ble_has_data(void) { return connected && pending; }
 const char* ble_get_data(void) {
     pending = false;
     delivered_ms = millis();

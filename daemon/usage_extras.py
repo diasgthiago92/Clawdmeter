@@ -156,17 +156,17 @@ class ModelTokenTally:
         return [[name, tokens] for name, tokens in ranked[:MODELS_MAX] if tokens > 0]
 
 
-def encode_stacked(claude: list[int], kiro: list[int]) -> list[str]:
-    """Two base64-digit strings (Claude, Kiro) for the stacked hourly bars.
+def encode_stacked(*series: list[int]) -> list[str]:
+    """Base64-digit strings (one per series) for the stacked hourly bars.
 
     Tokens and requests don't share a unit, so each series is scaled to its
     own busiest hour and the stack is scaled so the tallest bar fills the chart.
     """
-    pc, pk = max(claude, default=0), max(kiro, default=0)
-    c = [v / pc if pc else 0.0 for v in claude]
-    k = [v / pk if pk else 0.0 for v in kiro]
-    tallest = max((a + b for a, b in zip(c, k)), default=0.0)
+    scaled = []
+    for values in series:
+        peak = max(values, default=0)
+        scaled.append([v / peak if peak else 0.0 for v in values])
+    tallest = max((sum(col) for col in zip(*scaled)), default=0.0)
     if not tallest:
-        return [_B64[0] * len(claude), _B64[0] * len(kiro)]
-    return ["".join(_B64[round(v / tallest * 63)] for v in c),
-            "".join(_B64[round(v / tallest * 63)] for v in k)]
+        return [_B64[0] * len(values) for values in series]
+    return ["".join(_B64[round(v / tallest * 63)] for v in values) for values in scaled]
