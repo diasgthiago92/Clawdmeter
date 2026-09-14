@@ -1419,6 +1419,110 @@ static void routines_tick(void) {
     }
 }
 
+static bool live_is_active(void);
+
+// ---- Meeting alert (Google Agenda) ----
+// Five minutes before a meeting the screen takes over with a countdown, like the
+// live match lock; it lets go a minute after the start or when the daemon clears it.
+#define MEETING_GRACE_MS  (60 * 1000)
+#define MEETING_STALE_MS  (7 * 60 * 1000)   // daemon gone: don't hold a stale alert
+static lv_obj_t* meeting_container;
+static lv_obj_t* lbl_meeting_count;
+static lv_obj_t* lbl_meeting_badge;
+static lv_obj_t* lbl_meeting_title;
+static lv_obj_t* lbl_meeting_when;
+static lv_obj_t* lbl_meeting_where;
+static bool      meeting_active = false;
+static uint32_t  meeting_start_ms = 0;       // lv_tick at which the meeting starts
+static uint32_t  meeting_rx_ms = 0;
+static int       meeting_shown_secs = -99999;
+
+static void init_meeting_screen(lv_obj_t* scr) {
+    meeting_container = make_screen_container(scr, "Reunião");
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(meeting_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+
+    lbl_meeting_badge = make_dim_label(panel, L.axis_font, "COMEÇA EM");
+    lv_obj_align(lbl_meeting_badge, LV_ALIGN_TOP_MID, 0, 0);
+
+    lbl_meeting_count = lv_label_create(panel);
+    lv_label_set_text(lbl_meeting_count, "--:--");
+    lv_obj_set_style_text_font(lbl_meeting_count, &font_tiempos_56, 0);
+    lv_obj_set_style_text_color(lbl_meeting_count, COL_TEXT, 0);
+    lv_obj_align(lbl_meeting_count, LV_ALIGN_TOP_MID, 0, lv_font_get_line_height(L.axis_font) + 4);
+
+    lbl_meeting_title = lv_label_create(panel);
+    lv_label_set_long_mode(lbl_meeting_title, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(lbl_meeting_title, inner_w, lv_font_get_line_height(L.reset_font) * 2 + 4);
+    lv_obj_set_style_text_font(lbl_meeting_title, L.reset_font, 0);
+    lv_obj_set_style_text_color(lbl_meeting_title, COL_TEXT, 0);
+    lv_obj_set_style_text_align(lbl_meeting_title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(lbl_meeting_title, "");
+    lv_obj_align(lbl_meeting_title, LV_ALIGN_CENTER, 0, 20);
+
+    lbl_meeting_when = make_dim_label(panel, L.reset_font, "");
+    lv_obj_align(lbl_meeting_when, LV_ALIGN_BOTTOM_MID, 0, -lv_font_get_line_height(L.axis_font) - 10);
+
+    lbl_meeting_where = lv_label_create(panel);
+    lv_label_set_long_mode(lbl_meeting_where, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(lbl_meeting_where, inner_w);
+    lv_obj_set_style_text_font(lbl_meeting_where, L.axis_font, 0);
+    lv_obj_set_style_text_color(lbl_meeting_where, accent_color, 0);
+    lv_obj_set_style_text_align(lbl_meeting_where, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(lbl_meeting_where, "");
+    lv_obj_align(lbl_meeting_where, LV_ALIGN_BOTTOM_MID, 0, 0);
+}
+
+static void render_meeting_count(void) {
+    const int32_t left_ms = (int32_t)(meeting_start_ms - lv_tick_get());
+    const int secs = left_ms > 0 ? (left_ms + 999) / 1000 : -1;
+    if (secs == meeting_shown_secs) return;
+    meeting_shown_secs = secs;
+    lv_label_set_text(lbl_meeting_badge, secs < 0 ? "COMEÇOU" : "COMEÇA EM");
+    if (secs < 0) {
+        lv_label_set_text(lbl_meeting_count, "Agora");
+        lv_obj_set_style_text_color(lbl_meeting_count, accent_color, 0);
+    } else {
+        lv_label_set_text_fmt(lbl_meeting_count, "%d:%02d", secs / 60, secs % 60);
+        lv_obj_set_style_text_color(lbl_meeting_count, secs <= 60 ? accent_color : COL_TEXT, 0);
+    }
+}
+
+void ui_update_meeting(const char* title, const char* hhmm, int seconds, const char* where) {
+    if (!meeting_container) return;
+    if (!title) {
+        if (!meeting_active) return;
+        meeting_active = false;
+        if (current_screen == SCREEN_MEETING) ui_show_screen(live_is_active() ? SCREEN_LIVE : ROTATION[0].screen);
+        return;
+    }
+    const uint32_t now = lv_tick_get();
+    meeting_rx_ms = now;
+    meeting_start_ms = now + (uint32_t)(seconds > 0 ? seconds : 0) * 1000;
+    meeting_shown_secs = -99999;
+    lv_label_set_text(lbl_meeting_title, title);
+    lv_label_set_text_fmt(lbl_meeting_when, "às %s", hhmm);
+    lv_label_set_text(lbl_meeting_where, where);
+    render_meeting_count();
+    if (!meeting_active) {
+        meeting_active = true;
+        tap_hold = false;                    // the alert takes the screen right away
+        ui_show_screen(SCREEN_MEETING);
+    }
+}
+
+static void meeting_tick(void) {
+    if (!meeting_active) return;
+    const uint32_t now = lv_tick_get();
+    if ((int32_t)(now - meeting_start_ms) > MEETING_GRACE_MS || now - meeting_rx_ms > MEETING_STALE_MS) {
+        ui_update_meeting(nullptr, "", 0, "");
+        return;
+    }
+    render_meeting_count();
+}
+
 static lv_obj_t* games_container;
 static lv_obj_t* lbl_games_empty;
 static lv_obj_t* lbl_game_match[GAMES_MAX];
@@ -1543,6 +1647,8 @@ void ui_update_live(const LiveMatch* m) {
         ui_show_screen(SCREEN_LIVE);
     }
 }
+
+static bool live_is_active(void) { return live_active; }
 
 static void live_tick(void) {
     if (!live_active) return;
@@ -1752,6 +1858,7 @@ void ui_init(void) {
     init_routines_screen(scr);
     init_games_screen(scr);
     init_live_screen(scr);
+    init_meeting_screen(scr);
     splash_init(scr);
 
     if (splash_get_root()) {
@@ -1901,6 +2008,11 @@ static void rotation_tick(void) {
         if (now - tap_ms < ROTATION_TAP_PAUSE_MS) return;
         tap_hold = false;
     }
+    // An imminent meeting takes precedence over everything, then a Vasco match.
+    if (meeting_active) {
+        if (current_screen != SCREEN_MEETING) ui_show_screen(SCREEN_MEETING);
+        return;
+    }
     // A Vasco match freezes rotation on the live score until it ends.
     if (live_active) {
         if (current_screen != SCREEN_LIVE) ui_show_screen(SCREEN_LIVE);
@@ -1940,12 +2052,15 @@ static void accent_tick(void) {
     accent_hex   = kiro ? COL_HEX_KIRO : COL_HEX_CLAUDE;
     if (lbl_anim)          lv_obj_set_style_text_color(lbl_anim, accent_color, 0);
     if (lbl_live_status)   lv_obj_set_style_text_color(lbl_live_status, accent_color, 0);
+    if (lbl_meeting_where) lv_obj_set_style_text_color(lbl_meeting_where, accent_color, 0);
+    meeting_shown_secs = -99999;
     if (lbl_game_detail[0]) lv_obj_set_style_text_color(lbl_game_detail[0], accent_color, 0);
     if (lbl_agenda_note)   render_agenda();
 }
 
 void ui_tick_anim(void) {
     accent_tick();
+    meeting_tick();
     live_tick();
     routines_tick();
     rotation_tick();
@@ -2024,7 +2139,10 @@ static void apply_battery_visibility(void) {
 // screen can be read; during a match it returns to the live score after the pause.
 static screen_t step_screen(screen_t from, int dir) {
     screen_t s = (screen_t)((from + dir + SCREEN_COUNT) % SCREEN_COUNT);
-    if (s == SCREEN_LIVE && !live_active) s = (screen_t)((s + dir + SCREEN_COUNT) % SCREEN_COUNT);
+    for (int guard = 0; guard < 3; guard++) {   // skip alert screens that aren't active
+        if ((s == SCREEN_LIVE && !live_active) || (s == SCREEN_MEETING && !meeting_active))
+            s = (screen_t)((s + dir + SCREEN_COUNT) % SCREEN_COUNT);
+    }
     return s;
 }
 
@@ -2051,6 +2169,7 @@ void ui_show_screen(screen_t screen) {
     lv_obj_add_flag(routines_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(agenda_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(live_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(meeting_container, LV_OBJ_FLAG_HIDDEN);
     splash_hide();
 
     switch (screen) {
@@ -2071,6 +2190,7 @@ void ui_show_screen(screen_t screen) {
     }
     case SCREEN_VASCO:   lv_obj_clear_flag(games_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&games_list); break;
     case SCREEN_LIVE:    lv_obj_clear_flag(live_container, LV_OBJ_FLAG_HIDDEN); break;
+    case SCREEN_MEETING: lv_obj_clear_flag(meeting_container, LV_OBJ_FLAG_HIDDEN); break;
     default: break;
     }
 

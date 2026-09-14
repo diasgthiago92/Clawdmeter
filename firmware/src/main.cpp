@@ -208,6 +208,12 @@ static bool handle_extra_json(const char* json) {
         else            ui_update_kiro(k[0] | 0, k[1] | 0);
         return true;
     }
+    if (!doc["mt"].isNull()) {               // meeting alert: [title, "HH:MM", seconds, where] or 0
+        JsonArray mt = doc["mt"].as<JsonArray>();
+        if (mt.isNull()) ui_update_meeting(nullptr, "", 0, "");
+        else ui_update_meeting(mt[0] | "", mt[1] | "", mt[2] | 0, mt[3] | "");
+        return true;
+    }
     if (!doc["l"].isNull()) {
         JsonArray src = doc["l"].as<JsonArray>();
         if (src.isNull()) {                 // {"l": 0}: the match ended
