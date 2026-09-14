@@ -6,7 +6,8 @@
    paginar nem de descartar itens no daemon ou no firmware. Cabeçalho e rodapé
    ficam fixos; arrastar rola e pausa a rotação; toque curto continua navegando
    (metade direita avança, esquerda volta); sem toque, a lista desliza sozinha
-   até o fim durante o tempo da tela. Telas que abrem num item relevante
+   até o fim devagar (25 px/s) e a rotação espera a lista terminar. Com o dedo
+   encostado na tela a rotação nunca troca de tela. Telas que abrem num item relevante
    (ex.: Agenda na reunião atual) usam `ScrollList.focus`.
    **Todas as telas** (inclusive Uso, Consumo, jogo ao vivo e a tela inicial)
    arrastam para cima e para baixo com o dedo (`make_screen_draggable`): se o
