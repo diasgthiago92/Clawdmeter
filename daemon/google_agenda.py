@@ -9,6 +9,10 @@ short-lived access token itself (it is this daemon's own token). Sent as
 state: 0 = already over, 1 = happening now, 2 = still to come. Declined
 meetings and working-location entries are skipped. Before the one-time login
 the screen gets {"g": [], "o": 0, "n": 0, "login": 1}.
+
+Meeting alert: while a meeting starts within ALERT_LEAD_S the device gets
+{"mt": [title, "HH:MM", seconds to start, where]} (where = room or video link)
+and holds an alert screen with a countdown; {"mt": 0} once none is imminent.
 """
 
 import datetime
@@ -24,6 +28,11 @@ EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 AGENDA_MAX = 24   # the device scrolls and opens on the current meeting
 AGENDA_REFRESH_S = 60
 TITLE_MAX = 30
+ALERT_LEAD_S = 5 * 60
+ALERT_GRACE_S = 60          # keep the alert up for a minute after the start
+ALERT_TITLE_MAX = 60
+WHERE_MAX = 48
+ALERT_BYTES = 170
 _SKIP_TYPES = {"workingLocation", "focusTime"}
 
 
@@ -31,13 +40,53 @@ def _local(value: str) -> datetime.datetime:
     return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone()
 
 
+def _where(ev: dict) -> str:
+    """Room or video link, shortened for the device ("meet.google.com/abc-defg-hij")."""
+    where = (ev.get("location") or "").strip()
+    if not where:
+        where = ev.get("hangoutLink") or ""
+        for entry in (ev.get("conferenceData") or {}).get("entryPoints") or []:
+            if not where and entry.get("entryPointType") == "video":
+                where = entry.get("uri") or ""
+    for prefix in ("https://", "http://", "www."):
+        if where.startswith(prefix):
+            where = where[len(prefix):]
+    return where[:WHERE_MAX]
+
+
+def _attending(ev: dict) -> bool:
+    if ev.get("status") == "cancelled" or ev.get("eventType") in _SKIP_TYPES:
+        return False
+    me = next((a for a in ev.get("attendees") or [] if a.get("self")), None)
+    return not (me and me.get("responseStatus") == "declined")
+
+
+def build_alert(events: list[dict], now: datetime.datetime) -> dict:
+    """{"mt": [...]} for the next timed meeting starting within ALERT_LEAD_S, else {"mt": 0}."""
+    best = None
+    for ev in events:
+        start = (ev.get("start") or {}).get("dateTime")
+        if not start or not _attending(ev):
+            continue
+        s = _local(start)
+        secs = (s - now).total_seconds()
+        if -ALERT_GRACE_S <= secs <= ALERT_LEAD_S and (best is None or s < best[0]):
+            best = (s, ev, secs)
+    if not best:
+        return {"mt": 0}
+    s, ev, secs = best
+    title = (ev.get("summary") or "(sem título)").strip()[:ALERT_TITLE_MAX]
+    payload = {"mt": [title, s.strftime("%H:%M"), max(0, int(secs)), _where(ev)]}
+    # One BLE write: trim the title until the escaped JSON fits.
+    while len(json.dumps(payload, separators=(",", ":"))) > ALERT_BYTES and payload["mt"][0]:
+        payload["mt"][0] = payload["mt"][0][:-2].rstrip()
+    return payload
+
+
 def build_rows(events: list[dict], now: datetime.datetime) -> list[list]:
     rows = []
     for ev in events:
-        if ev.get("status") == "cancelled" or ev.get("eventType") in _SKIP_TYPES:
-            continue
-        me = next((a for a in ev.get("attendees") or [] if a.get("self")), None)
-        if me and me.get("responseStatus") == "declined":
+        if not _attending(ev):
             continue
         title = (ev.get("summary") or "(sem título)").strip()[:TITLE_MAX]
         start, end = ev.get("start") or {}, ev.get("end") or {}
@@ -58,6 +107,11 @@ class GoogleAgenda:
         self.access_expiry = 0.0
         self.payloads: list[dict] = []
         self.fetched_at = 0.0
+        self.events: list[dict] = []
+
+    def alert(self, now: float) -> dict:
+        """Meeting alert from the last fetch, recomputed at `now` (exact countdown)."""
+        return build_alert(self.events, datetime.datetime.fromtimestamp(now).astimezone())
 
     async def _access(self, http: httpx.AsyncClient, now: float) -> str | None:
         if self.access_token and now < self.access_expiry - 60:
@@ -97,6 +151,7 @@ class GoogleAgenda:
                 "maxResults": 50,
             })
             resp.raise_for_status()
-        rows = build_rows(resp.json().get("items") or [], local_now)
+        self.events = resp.json().get("items") or []
+        rows = build_rows(self.events, local_now)
         self.payloads = chunk_table("g", rows) if rows else [{"g": [], "o": 0, "n": 0}]
         return self.payloads

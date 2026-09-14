@@ -14,6 +14,7 @@ enum screen_t {
     SCREEN_FIIS,             // fundos imobiliários
     SCREEN_VASCO,
     SCREEN_LIVE,             // only reachable while a Vasco match is on
+    SCREEN_MEETING,          // only while a meeting starts within 5 minutes
     SCREEN_COUNT,
 };
 
@@ -30,7 +31,9 @@ void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, b
 void ui_update_routines(const RoutineRow* rows, int offset, int count, int total);
 void ui_update_games(const GameRow* rows, int offset, int count, int total);
 void ui_update_kiro(int percent, int reset_days);  // percent < 0 = hide
-void ui_update_live(const LiveMatch* match);   // nullptr = match over
+void ui_update_live(const LiveMatch* match);
+// Meeting alert: title, "HH:MM", seconds to start, room/link. title == nullptr clears it.
+void ui_update_meeting(const char* title, const char* hhmm, int seconds, const char* where);   // nullptr = match over
 
 void ui_tick_anim(void);
 void ui_show_screen(screen_t screen);

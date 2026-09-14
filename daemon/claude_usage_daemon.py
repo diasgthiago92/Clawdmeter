@@ -704,6 +704,7 @@ class Session:
             except (httpx.HTTPError, ValueError) as e:
                 log(f"{label} data unavailable: {e}")
                 extras.extend(source.payloads)
+        extras.append(_AGENDA.alert(time.time()))   # meeting starting soon: alert screen with countdown
         # The day's costume for Clawd and the Kiro ghost: Vasco shirt on match days,
         # Santa / passista / witch on Christmas, Carnaval and Halloween.
         utc_now = datetime.datetime.now(datetime.timezone.utc)

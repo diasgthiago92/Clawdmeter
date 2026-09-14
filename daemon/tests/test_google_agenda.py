@@ -36,3 +36,22 @@ def test_build_rows_keeps_the_whole_day():
     rows = build_rows(events, now)
     assert [r[2] for r in rows] == [f"R{h}" for h in range(8, 22)]   # nothing dropped; the device scrolls
     assert [r[3] for r in rows][-2:] == [1, 2]
+
+
+def test_build_alert_next_meeting_within_five_minutes():
+    from daemon.google_agenda import build_alert
+
+    tz = datetime.timezone(datetime.timedelta(hours=-3))
+    now = datetime.datetime(2026, 9, 14, 9, 26, 30, tzinfo=tz)
+    events = [
+        _ev("Daily", "2026-09-14T09:00:00-03:00", "2026-09-14T09:15:00-03:00"),
+        _ev("Planejamento", "2026-09-14T09:30:00-03:00", "2026-09-14T10:00:00-03:00",
+            hangoutLink="https://meet.google.com/abc-defg-hij"),
+        _ev("Review", "2026-09-14T09:31:00-03:00", "2026-09-14T10:00:00-03:00", location="Sala Rio 3"),
+    ]
+    alert = build_alert(events, now)
+    assert alert["mt"][0] == "Planejamento" and alert["mt"][2] == 210
+    assert alert["mt"][3] == "meet.google.com/abc-defg-hij"
+    later = datetime.datetime(2026, 9, 14, 9, 30, 30, tzinfo=tz)
+    assert build_alert(events, later)["mt"][0] == "Planejamento"   # grace minute after the start
+    assert build_alert(events, datetime.datetime(2026, 9, 14, 11, 0, tzinfo=tz)) == {"mt": 0}
