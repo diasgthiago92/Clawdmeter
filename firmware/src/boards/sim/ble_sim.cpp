@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_STATES 64
+#define MAX_STATES 128
 #define MAX_LINE   512
 
 struct SimState {

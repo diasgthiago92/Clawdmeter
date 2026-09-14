@@ -1,31 +1,75 @@
-# Demo roteirizado para gravação: SIM_RECORD=demo.mp4 com o env sim_demo.
-{"name":"usage","hold_ms":40,"s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
-{"name":"history","hold_ms":40,"h":"--------------loqtwy1469ADFILNQTVYadgiloqtwy1469ADFILNQTVYadgiACDFHIKLNPQSUVXZacdfhikmnprsuwxz02"}
-{"name":"kiro history","hold_ms":40,"hk":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEOdt5/90mXJBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACLZp2++3qbAAAAA","kp":14}
-{"name":"models","hold_ms":40,"m":[["Opus 5",3922893],["Sonnet 5",812004],["Haiku 4.5",96120]],"mk":37}
-{"name":"kiro credits","hold_ms":40,"k":[36,18]}
-{"name":"crypto 1","hold_ms":40,"x":[["BTC","393.121","76.777",-0.7],["ETH","12.702","2.481",-2.1],["BNB","3.667","716,21",-2.7],["SOL","510,79","99,76",2.4]],"o":0,"n":8}
-{"name":"crypto 2","hold_ms":40,"x":[["XRP","6,87","1,34",1.1],["ADA","1,05","0,2048",-2.1],["DOGE","0,4273","0,0835",3.8],["LTC","274,15","53,54",-0.8]],"o":4,"n":8}
-{"name":"stocks 0","hold_ms":40,"b":[["PETR4","Petrobras","49,00","1,31",-0.2],["VALE3","Vale","78,20","1,77",0.4],["ITUB4","Itaú","42,73","2,27",0.9]],"o":0,"n":18,"i":["187.207",-0.6]}
-{"name":"stocks 3","hold_ms":40,"b":[["BBDC4","Bradesco","18,59","1,12",0.6],["BBAS3","BB","22,49","0,71",-1.4],["ROXO34","Nubank","12,45","-",-2.0]],"o":3,"n":18}
-{"name":"stocks 6","hold_ms":40,"b":[["ABEV3","Ambev","15,62","2,74",-0.8],["WEGE3","WEG","51,49","11,46",-1.3],["B3SA3","B3","17,28","4,66",-2.2]],"o":6,"n":18}
-{"name":"stocks 9","hold_ms":40,"b":[["KLBN11","Klabin","19,54","2,57",-0.2],["TAEE11","Taesa","40,73","1,74",-1.4],["POMO4","Marcopolo","4,50","1,33",-1.7]],"o":9,"n":18}
-{"name":"stocks 12","hold_ms":40,"b":[["BHIA3","Casas Bahia","0,76","-0,09",4.1],["GGBR4","Gerdau","26,10","0,96",0.3],["MGLU3","Magalu","5,76","0,40",-3.0]],"o":12,"n":18}
-{"name":"stocks 15","hold_ms":40,"b":[["ISAE4","ISA Energia","27,72","0,88",-1.3],["CEAB3","C&A","9,35","0,76",-0.1],["COGN3","Cogna","2,33","0,35",-2.1]],"o":15,"n":18}
-{"name":"games 1","hold_ms":40,"v":[["Santa Fe","C","Ter 15/09 19:00","Sul-Americana"],["Coritiba","C","Sáb 19/09 20:30","Brasileirão"]],"o":0,"n":4}
-{"name":"games 2","hold_ms":40,"v":[["Botafogo","F","Qua 07/10 20:30","Brasileirão"],["Remo","C","Sáb 10/10 17:00","Brasileirão"]],"o":2,"n":4}
-{"name":"tela inicial","hold_ms":47000,"s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
-{"name":"uso + mascote","hold_ms":36000,"screen":"usage","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
-{"name":"history","hold_ms":6000,"screen":"history","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
-{"name":"models","hold_ms":6000,"screen":"models","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
-{"name":"crypto","hold_ms":7000,"screen":"crypto","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
-{"name":"stocks","hold_ms":11000,"screen":"stocks","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
-{"name":"vasco","hold_ms":6000,"screen":"vasco","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true,"t":1789300800,"tf":24}
+# Demo roteirizado: pio run -e sim_demo; SIM_SCENARIO=sim/demo.jsonl SIM_RECORD=demo.mp4 .pio/build/sim_demo/program
+{"name":"uso","hold_ms":40,"s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"kiro","hold_ms":40,"k":[36,18]}
+{"name":"gemini","hold_ms":40,"ag":[914548,48,12]}
+{"name":"consumo 24h","hold_ms":40,"hb":["AAAAAAFAAJh5wAAAAAAATXnX","AAAAAAOrTAAAAAc5mAAAAJYA","AAAAAAAALgAAAAAAAY5AAAAE"],"tc":139909602,"tk":49,"ta":474548}
+{"name":"modelos","hold_ms":40,"m":[["Opus 5",3922893],["Sonnet 5",812004],["Haiku 4.5",96120]],"mk":37,"ma":914548}
+{"name":"agenda","hold_ms":30,"g":[["Dia","","Aniversário da Ana",1],["09:00","09:15","Daily VAS",0]],"o":0,"n":9}
+{"name":"agenda","hold_ms":30,"g":[["10:00","11:00","Planejamento Sprint",1],["11:30","12:00","1:1 com gestora",2]],"o":2,"n":9}
+{"name":"agenda","hold_ms":30,"g":[["14:00","15:00","Review Financiamento",2],["15:30","16:00","Alinhamento Kiro",2]],"o":4,"n":9}
+{"name":"agenda","hold_ms":30,"g":[["16:30","17:30","Demo Clawdmeter",2],["18:00","18:30","Retro",2]],"o":6,"n":9}
+{"name":"agenda","hold_ms":30,"g":[["19:00","19:30","Café com o time",2]],"o":8,"n":9}
+{"name":"rotinas","hold_ms":30,"r":[["OLX Rejected Rescue","11:01",1,1],["Board Financiamento","11:00",1,5],["Histórico Veicular","11:00",1,1]],"o":0,"n":10}
+{"name":"rotinas","hold_ms":30,"r":[["Backup local","10:31",1,2],["Backup Drive","10:31",0,2],["Organização e-mails","09:00",1,3]],"o":3,"n":10}
+{"name":"rotinas","hold_ms":30,"r":[["Daily Vehicle Report","08:12",1,1],["Vault Graph Sync","07:04",1,8],["Sprint Watcher","06:00",1,1]],"o":6,"n":10}
+{"name":"rotinas","hold_ms":30,"r":[["Support Report","05:30",1,1]],"o":9,"n":10}
+{"name":"cripto","hold_ms":30,"x":[["BTC","394.016","76.919",-0.4],["ETH","12.741","2.487",-1.4],["BNB","3.677","717,87",-1.4],["SOL","510,97","99,75",-2.4]],"o":0,"n":8}
+{"name":"cripto","hold_ms":30,"x":[["XRP","6,90","1,35",-1.5],["ADA","1,05","0,2047",-1.5],["DOGE","0,4244","0,0828",-2.4],["LTC","277,51","54,17",0.5]],"o":4,"n":8}
+{"name":"bovespa","hold_ms":30,"b":[["PETR4","Petrobras","49,00","1,31",-0.2],["VALE3","Vale","78,20","1,77",0.0]],"o":0,"n":38,"i":["187.207",-0.6]}
+{"name":"bovespa","hold_ms":30,"b":[["ITUB4","Itaú","42,73","2,27",0.9],["BBDC4","Bradesco","18,59","1,12",0.6],["BBAS3","BB","22,49","0,71",-1.4]],"o":2,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["ROXO34","Nubank","12,45","-",-2.0],["ABEV3","Ambev","15,62","2,74",-0.8],["WEGE3","WEG","51,49","11,46",-1.3]],"o":5,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["B3SA3","B3","17,28","4,66",-2.2],["KLBN11","Klabin","19,54","2,57",-0.2],["TAEE11","Taesa","40,73","1,74",-1.4]],"o":8,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["POMO4","Marcopolo","4,50","1,33",-1.7],["BHIA3","Casas Bahia","0,76","-0,09",4.1],["GGBR4","Gerdau","26,10","0,96",0.3]],"o":11,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["MGLU3","Magalu","5,76","0,40",-3.0],["ISAE4","ISA Energia","27,72","0,88",-1.3],["CEAB3","C&A","9,35","0,76",-0.1]],"o":14,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["COGN3","Cogna","2,33","0,35",-2.1],["AXIA3","Axia","54,80","1,32",-1.6],["SUZB3","Suzano","47,81","1,22",-0.6]],"o":17,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["RENT3","Localiza","35,80","1,49",-2.7],["RDOR3","Rede D'Or","37,61","4,06",-1.2],["EQTL3","Equatorial","39,65","1,91",-1.1]],"o":20,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["PRIO3","PRIO","64,19","1,99",0.0],["RADL3","RD Saúde","19,56","4,70",-1.0],["SBSP3","Sabesp","27,04","2,11",-0.9]],"o":23,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["EMBJ3","Embraer","96,94","4,01",1.2],["VIVT3","Vivo","30,27","1,49",-0.6],["TIMS3","TIM","19,37","1,85",-0.9]],"o":26,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["UGPA3","Ultrapar","38,02","2,36",-1.3],["LREN3","Renner","11,33","1,10",-1.0],["CMIG4","Cemig","11,45","1,12",-0.1]],"o":29,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["CPLE3","Copel","15,96","1,97",-1.1],["ENEV3","Eneva","27,36","2,61",-1.2],["BBSE3","BB Seguros","39,50","7,04",-4.1]],"o":32,"n":38}
+{"name":"bovespa","hold_ms":30,"b":[["SANB11","Santander","30,62","1,16",2.3],["BPAC11","BTG Pactual","60,82","2,97",0.6],["VBBR3","Vibra","37,55","1,91",-1.8]],"o":35,"n":38}
+{"name":"fiis","hold_ms":30,"f":[["MXRF11","Maxi","9,14","0,98",-0.2],["HGLG11","CSHG Log","146,00","0,88",-0.3],["KNRI11","Kinea RI","157,40","0,96",0.1]],"o":0,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["XPML11","XP Malls","102,65","0,93",-0.8],["VISC11","Vinci SC","104,83","0,91",1.1]],"o":3,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["HGRU11","Pátria RU","115,00","0,90",0.6],["BTLG11","BTG Log","101,31","0,95",0.9]],"o":5,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["KNCR11","Kinea CRI","106,40","1,04",-0.4],["KNIP11","Kinea IP","89,00","0,96",-0.3]],"o":7,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["CPTS11","Capitânia","7,50","0,88",0.3],["IRDM11","Iridium","58,50","0,74",2.2],["HGRE11","CSHG RE","113,69","0,78",-0.9]],"o":9,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["XPLG11","XP Log","91,65","0,87",0.1],["VILG11","Vinci Log","93,15","0,85",0.0],["BRCO11","Bresco","110,05","0,96",-0.9]],"o":12,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["RECR11","REC CRI","74,95","0,86",0.1],["TRXF11","TRX","72,93","0,75",2.1],["HSML11","HSI Malls","83,01","0,83",0.0]],"o":15,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["VGIR11","Valora","9,59","0,98",-1.0],["RBRR11","RBR CRI","70,13","0,76",-1.3],["RBRF11","RBR Alpha","6,65","0,78",1.8]],"o":18,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["JSRE11","JS RE","60,19","0,59",-0.5],["PVBI11","VBI Prime","68,90","0,66",0.3],["KNSC11","Kinea Sec","8,96","1,03",-0.2]],"o":21,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["MCCI11","Mauá","94,65","1,01",-0.1],["HFOF11","Hedge FoF","6,27","0,82",-0.5],["GGRC11","GGR","8,99","0,81",-0.1]],"o":24,"n":30}
+{"name":"fiis","hold_ms":30,"f":[["ALZR11","Alianza","10,00","0,93",0.2],["LVBI11","VBI Log","97,73","0,81",0.0],["KNHY11","Kinea HY","94,13","0,96",-0.6]],"o":27,"n":30}
+{"name":"jogos","hold_ms":30,"v":[["Santa Fe","C","Ter 15/09 19:00","Sul-Americana"],["Coritiba","C","Sáb 19/09 20:30","Brasileirão"]],"o":0,"n":10}
+{"name":"jogos","hold_ms":30,"v":[["Botafogo","F","Qua 07/10 20:30","Brasileirão"],["Remo","C","Sáb 10/10 17:00","Brasileirão"]],"o":2,"n":10}
+{"name":"jogos","hold_ms":30,"v":[["São Paulo","F","Sáb 17/10","Brasileirão"],["Corinthians","C","Sáb 24/10","Brasileirão"]],"o":4,"n":10}
+{"name":"jogos","hold_ms":30,"v":[["Flamengo","C","Qua 28/10","Brasileirão"],["Palmeiras","F","Dom 01/11","Copa do Brasil"]],"o":6,"n":10}
+{"name":"jogos","hold_ms":30,"v":[["Athletico-PR","F","Qua 04/11","Brasileirão"],["Palmeiras","C","Dom 08/11","Copa do Brasil"]],"o":8,"n":10}
+{"name":"tela inicial","hold_ms":22000}
+{"name":"consumo","hold_ms":6000,"screen":"usage","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"consumo: rola","hold_ms":3000,"drag":[240,420,170,600]}
+{"name":"consumo: canto","hold_ms":9000}
+{"name":"agenda","hold_ms":7000,"screen":"agenda","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"history","hold_ms":7000,"screen":"history","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"models","hold_ms":8000,"screen":"models","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"routines","hold_ms":9000,"screen":"routines","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"crypto","hold_ms":7000,"screen":"crypto","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"stocks","hold_ms":11500,"screen":"stocks","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"fiis","hold_ms":11500,"screen":"fiis","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name":"vasco","hold_ms":7000,"screen":"vasco","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"jogo ao vivo","hold_ms":4000,"l":["Vasco","Santa Fe",0,0,"12'","1º tempo","Sul-Americana"]}
 {"name":"jogo ao vivo","hold_ms":6000,"l":["Vasco","Santa Fe",1,0,"23'","1º tempo","Sul-Americana"]}
 {"name":"jogo ao vivo","hold_ms":3000,"l":["Vasco","Santa Fe",1,0,"","Intervalo","Sul-Americana"]}
 {"name":"jogo ao vivo","hold_ms":4000,"l":["Vasco","Santa Fe",1,1,"58'","2º tempo","Sul-Americana"]}
 {"name":"jogo ao vivo","hold_ms":6000,"l":["Vasco","Santa Fe",2,1,"84'","2º tempo","Sul-Americana"]}
 {"name":"jogo ao vivo","hold_ms":3000,"l":["Vasco","Santa Fe",2,1,"90'+4'","2º tempo","Sul-Americana"]}
-{"name":"fim de jogo","hold_ms":5000,"l":0}
-{"name":"fim","hold_ms":1000,"quit":true}
+{"name":"fim de jogo","hold_ms":3000,"l":0}
+{"name":"fantasia Vasco","hold_ms":40,"cos":1}
+{"name":"fantasia Vasco","hold_ms":21000,"screen":"splash"}
+{"name":"fantasia Natal","hold_ms":40,"cos":2}
+{"name":"fantasia Natal","hold_ms":21000,"screen":"splash"}
+{"name":"fantasia Carnaval","hold_ms":40,"cos":3}
+{"name":"fantasia Carnaval","hold_ms":21000,"screen":"splash"}
+{"name":"fantasia Halloween","hold_ms":40,"cos":4}
+{"name":"fantasia Halloween","hold_ms":21000,"screen":"splash"}
+{"name":"sem fantasia","hold_ms":40,"cos":0}
+{"name":"fim","hold_ms":500,"quit":true}
