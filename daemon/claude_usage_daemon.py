@@ -29,7 +29,7 @@ from antigravity_usage import AntigravityUsage
 from costumes import costume_for
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines, rerun
-from kiro_usage import KiroActivity, KiroUsage
+from kiro_usage import KiroActivity, KiroUsage, credits_per_request
 from team_fixtures import LiveMatch, TeamFixtures, is_match_day
 from usage_extras import (
     ModelTokenTally,
@@ -707,9 +707,12 @@ class Session:
             config_dirs = read_config_dirs()
             claude_hourly = _MODEL_TALLY.hourly(config_dirs, now)
             # Consumo 24h: stacked hourly bars, Claude tokens + Kiro requests + Antigravity tokens.
+            # Kiro: estimated credits (requests x average credits per request).
+            cpr = credits_per_request()
             extras.append({"hb": encode_stacked(claude_hourly, kiro_hourly, ag_hourly),
-                           "tc": sum(claude_hourly), "tk": sum(kiro_hourly), "ta": sum(ag_hourly)})
-            extras.append({"m": _MODEL_TALLY.top(config_dirs, since), "mk": kiro_requests, "ma": ag_window})
+                           "tc": sum(claude_hourly), "tk": round(sum(kiro_hourly) * cpr, 1), "ta": sum(ag_hourly)})
+            extras.append({"m": _MODEL_TALLY.top(config_dirs, since), "mk": round(kiro_requests * cpr, 1),
+                           "ma": ag_window})
         except OSError as e:
             log(f"Model tally failed: {e}")
         extras.append(_KIRO.get(now))

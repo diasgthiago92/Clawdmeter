@@ -134,7 +134,7 @@ static bool handle_extra_json(const char* json) {
 
     if (doc["hb"].is<JsonArray>()) {         // stacked hourly bars: Claude tokens + Kiro requests
         ui_update_history_bars(doc["hb"][0] | "", doc["hb"][1] | "", doc["hb"][2] | "",
-                               doc["tc"] | (uint64_t)0, doc["tk"] | 0, doc["ta"] | (uint64_t)0);
+                               doc["tc"] | (uint64_t)0, doc["tk"] | 0.0f, doc["ta"] | (uint64_t)0);
         return true;
     }
     if (doc["m"].is<JsonArray>()) {
@@ -147,7 +147,7 @@ static bool handle_extra_json(const char* json) {
             models[n].tokens = row[1] | (uint64_t)0;
             n++;
         }
-        ui_update_models(models, n, doc["mk"] | 0, doc["ma"] | (uint64_t)0);
+        ui_update_models(models, n, doc["mk"] | 0.0f, doc["ma"] | (uint64_t)0);
         return true;
     }
     if (doc["g"].is<JsonArray>()) {
@@ -206,8 +206,8 @@ static bool handle_extra_json(const char* json) {
     }
     if (!doc["k"].isNull()) {                // Kiro credits: [percent, days to reset] or 0
         JsonArray k = doc["k"].as<JsonArray>();
-        if (k.isNull()) ui_update_kiro(-1, 0);
-        else            ui_update_kiro(k[0] | 0, k[1] | 0);
+        if (k.isNull()) ui_update_kiro(-1, 0, 0, 0);
+        else            ui_update_kiro(k[0] | 0, k[1] | 0, k[2] | -1, k[3] | 0);
         return true;
     }
     if (doc["rrk"].is<JsonArray>()) {         // rerun acknowledgement: [name, 1 started | 0 refused]

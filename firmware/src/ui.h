@@ -22,9 +22,9 @@ enum screen_t {
 void ui_init(void);
 void ui_update(const UsageData* data);
 void ui_update_history_bars(const char* claude, const char* kiro, const char* ag,
-                            uint64_t tokens, int requests, uint64_t ag_tokens);
+                            uint64_t tokens, float kiro_credits, uint64_t ag_tokens);
 void ui_update_antigravity(uint64_t tokens_today, int pct_of_peak, int responses);
-void ui_update_models(const ModelUsage* models, int count, int kiro_requests, uint64_t ag_tokens);
+void ui_update_models(const ModelUsage* models, int count, float kiro_credits, uint64_t ag_tokens);
 enum quote_table_t { QUOTES_CRYPTO, QUOTES_STOCKS, QUOTES_FIIS, QUOTE_TABLE_COUNT };
 void ui_update_quotes(quote_table_t table, const QuoteRow* rows, int offset, int count, int total);
 void ui_update_stock_index(const char* value, float change_pct);
@@ -33,7 +33,7 @@ void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, b
 void ui_rerun_ack(const char* name, bool ok);
 void ui_update_routines(const RoutineRow* rows, int offset, int count, int total);
 void ui_update_games(const GameRow* rows, int offset, int count, int total);
-void ui_update_kiro(int percent, int reset_days);  // percent < 0 = hide
+void ui_update_kiro(int percent, int reset_days, int credits_used, int credit_limit);  // percent < 0 = hide
 void ui_update_live(const LiveMatch* match);
 // Meeting alert: title, "HH:MM", seconds to start, room/link. title == nullptr clears it.
 void ui_update_meeting(const char* title, const char* hhmm, int seconds, const char* where);   // nullptr = match over
