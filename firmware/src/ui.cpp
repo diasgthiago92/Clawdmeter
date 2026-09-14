@@ -880,7 +880,14 @@ struct ScrollList {
     int       start_y;
     uint32_t  shown_ms;
     uint32_t  touched_ms;    // last finger contact (stops the glide)
+    uint32_t  glide_ms;      // last glide step
+    uint32_t  glide_acc;     // sub-pixel progress, px*ms
+    uint32_t  end_ms;        // when the glide reached the bottom (0 = not yet)
 };
+// Unattended lists glide at a slow, fixed pace; the screen waits for the end.
+#define LIST_GLIDE_DELAY_MS 2500
+#define LIST_GLIDE_PX_S     25
+#define LIST_END_HOLD_MS    2500
 
 static void scroll_list_pressed_cb(lv_event_t* e) {
     ScrollList* l = (ScrollList*)lv_event_get_user_data(e);
@@ -917,21 +924,35 @@ static void scroll_list_show(ScrollList* l) {
     int y = l->focus * l->row_h;
     if (y > scroll_list_max_y(l)) y = scroll_list_max_y(l);
     l->start_y = y;
+    l->glide_ms = l->shown_ms;
+    l->glide_acc = 0;
+    l->end_ms = 0;
     lv_obj_scroll_to_y(l->box, y, LV_ANIM_OFF);
 }
 
-static void scroll_list_tick(ScrollList* l, uint32_t dwell_ms) {
-    if (!l->box) return;
+// Returns true while the list is still gliding (the rotation should wait for it).
+static bool scroll_list_tick(ScrollList* l) {
+    if (!l->box) return false;
     const uint32_t now = lv_tick_get();
-    if (l->touched_ms && now - l->touched_ms < ROTATION_TAP_PAUSE_MS) return;
+    if (l->touched_ms && now - l->touched_ms < ROTATION_TAP_PAUSE_MS) return false;
     const int max_y = scroll_list_max_y(l);
-    const uint32_t start = 2500;
-    const uint32_t span = dwell_ms > start + 5500 ? dwell_ms - start - 1500 : 4000;
-    const uint32_t elapsed = now - l->shown_ms;
-    if (max_y <= l->start_y || elapsed < start) return;
-    int y = l->start_y + (int)((int64_t)(max_y - l->start_y) * (elapsed - start) / span);
-    if (y > max_y) y = max_y;
-    if (y != lv_obj_get_scroll_y(l->box)) lv_obj_scroll_to_y(l->box, y, LV_ANIM_OFF);
+    const int cur = lv_obj_get_scroll_y(l->box);
+    if (now - l->shown_ms < LIST_GLIDE_DELAY_MS) {
+        l->glide_ms = now;
+        return max_y > cur;
+    }
+    if (cur >= max_y) {
+        if (!l->end_ms) l->end_ms = now;
+        return now - l->end_ms < LIST_END_HOLD_MS && max_y > 0;
+    }
+    l->glide_acc += (now - l->glide_ms) * LIST_GLIDE_PX_S;
+    l->glide_ms = now;
+    const int step = (int)(l->glide_acc / 1000);
+    if (step > 0) {
+        l->glide_acc -= (uint32_t)step * 1000;
+        lv_obj_scroll_to_y(l->box, cur + step > max_y ? max_y : cur + step, LV_ANIM_OFF);
+    }
+    return true;
 }
 
 static ScrollList models_list;
@@ -2150,8 +2171,25 @@ static void update_view_state(void) {
                       LV_OBJ_FLAG_HIDDEN);
 }
 
+static bool list_gliding = false;   // the visible screen's list hasn't reached its end yet
+
+static bool finger_down(void) {
+    for (lv_indev_t* indev = lv_indev_get_next(nullptr); indev; indev = lv_indev_get_next(indev)) {
+        if (lv_indev_get_type(indev) == LV_INDEV_TYPE_POINTER && lv_indev_get_state(indev) == LV_INDEV_STATE_PRESSED)
+            return true;
+    }
+    return false;
+}
+
 static void rotation_tick(void) {
     const uint32_t now = lv_tick_get();
+    // A finger on the glass (e.g. dragging a table) never lets the screen change;
+    // the usual tap pause starts counting once it lifts.
+    if (finger_down()) {
+        tap_ms = now;
+        tap_hold = true;
+        return;
+    }
     if (tap_hold) {
         if (now - tap_ms < ROTATION_TAP_PAUSE_MS) return;
         tap_hold = false;
@@ -2172,6 +2210,7 @@ static void rotation_tick(void) {
         return;
     }
     if (now - screen_shown_ms < rotation_dwell_ms(current_screen)) return;
+    if (list_gliding) return;                 // let a slow list finish before moving on
     size_t next = 0;
     for (size_t i = 0; i < ROTATION_COUNT; i++) {
         if (ROTATION[i].screen == current_screen) { next = (i + 1) % ROTATION_COUNT; break; }
@@ -2181,18 +2220,19 @@ static void rotation_tick(void) {
 
 // The visible screen's list (if any) glides on its own while unattended.
 static void lists_tick(void) {
-    const uint32_t dwell = rotation_dwell_ms(current_screen);
+    ScrollList* l = nullptr;
     switch (current_screen) {
-    case SCREEN_AGENDA:   scroll_list_tick(&agenda_list, dwell); break;
-    case SCREEN_USAGE:    scroll_list_tick(&usage_list, dwell); break;
-    case SCREEN_MODELS:   scroll_list_tick(&models_list, dwell); break;
-    case SCREEN_ROUTINES: scroll_list_tick(&routines_list, dwell); break;
-    case SCREEN_CRYPTO:   scroll_list_tick(&quote_tables[QUOTES_CRYPTO].list, dwell); break;
-    case SCREEN_STOCKS:   scroll_list_tick(&quote_tables[QUOTES_STOCKS].list, dwell); break;
-    case SCREEN_FIIS:     scroll_list_tick(&quote_tables[QUOTES_FIIS].list, dwell); break;
-    case SCREEN_VASCO:    scroll_list_tick(&games_list, dwell); break;
+    case SCREEN_AGENDA:   l = &agenda_list; break;
+    case SCREEN_USAGE:    l = &usage_list; break;
+    case SCREEN_MODELS:   l = &models_list; break;
+    case SCREEN_ROUTINES: l = &routines_list; break;
+    case SCREEN_CRYPTO:   l = &quote_tables[QUOTES_CRYPTO].list; break;
+    case SCREEN_STOCKS:   l = &quote_tables[QUOTES_STOCKS].list; break;
+    case SCREEN_FIIS:     l = &quote_tables[QUOTES_FIIS].list; break;
+    case SCREEN_VASCO:    l = &games_list; break;
     default: break;
     }
+    list_gliding = l && scroll_list_tick(l);
 }
 
 // Repaint accent-colored items when the on-screen character changes.
