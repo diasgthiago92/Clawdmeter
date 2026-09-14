@@ -28,7 +28,7 @@ from market_quotes import CryptoQuotes, FiiQuotes, StockQuotes
 from antigravity_usage import AntigravityUsage
 from costumes import costume_for
 from google_agenda import GoogleAgenda
-from kiro_routines import KiroRoutines
+from kiro_routines import KiroRoutines, rerun
 from kiro_usage import KiroActivity, KiroUsage
 from team_fixtures import LiveMatch, TeamFixtures, is_match_day
 from usage_extras import (
@@ -622,9 +622,24 @@ class Session:
         self.client = client
         self.refresh_requested = asyncio.Event()
 
-    def _on_refresh(self, _char, _data: bytearray) -> None:
+    def _on_refresh(self, _char, data: bytearray) -> None:
+        # One byte = refresh nudge; JSON = a command from the device's touch UI.
+        if len(data) > 1 and data[:1] == b"{":
+            try:
+                command = json.loads(bytes(data))
+            except ValueError:
+                return
+            if isinstance(command.get("rr"), str):
+                asyncio.get_running_loop().create_task(self._rerun_routine(command["rr"]))
+            return
         log("Refresh requested by device")
         self.refresh_requested.set()
+
+    async def _rerun_routine(self, name: str) -> None:
+        ok = await rerun(name[:40])
+        log(f"Rerun requested by device: {name!r} -> {'started' if ok else 'refused/failed'}")
+        await self.write_payload({"rrk": [name[:30], int(ok)]})
+        _ROUTINES.fetched_at = 0.0      # pick up the routine's Slack post on the next cycle
 
     async def setup_refresh_subscription(self) -> None:
         # start_notify awaits CoreBluetooth's CCCD-write confirmation, which

@@ -4,13 +4,22 @@ Every routine in ~/.kiro/rotinas posts its outcome to #leo-dias-news through
 the bot token in ~/.kiro/.env. We read that channel (read-only) and turn the
 day's messages into one row per routine:
 
-    {"r": [[name, "HH:MM" of the latest run, 1 ok | 0 failed, runs today], ...],
+    {"r": [[name, "HH:MM" of the latest run, 1 ok | 0 failed, runs today, 1 rerunnable], ...],
      "o": offset, "n": total}
 
 Newest run first, up to ROUTINES_MAX rows (the device list scrolls).
+
+Rerun: the device can ask for a failed routine to run again ({"rr": name} on
+the request characteristic). Only routines in RERUN_LABELS (plus the optional
+~/.config/claude-usage-monitor/routines.json {name: launchd label}) can be
+started, and only through `launchctl kickstart` of their existing LaunchAgent —
+the device never sends a command line.
 """
 
+import asyncio
 import datetime
+import json
+import os
 import re
 from pathlib import Path
 
@@ -24,6 +33,44 @@ HISTORY_URL = "https://slack.com/api/conversations.history"
 ROUTINES_MAX = 24   # the device scrolls when they don't fit
 ROUTINES_REFRESH_S = 60
 NAME_MAX = 22
+ROUTINES_OVERRIDES = Path.home() / ".config" / "claude-usage-monitor" / "routines.json"
+
+# Routine name as shown on the device -> LaunchAgent that runs it.
+RERUN_LABELS = {
+    "OLX Rejected Rescue": "com.kiro.olx-rejected-rescue",
+    "Board Financiamento": "com.kiro.update-dados-financiamento",
+    "Histórico Veicular": "com.kiro.hv-volume-mensal",
+    "Backup local": "com.thiago.kiro-backup-local",
+    "Backup Drive": "com.thiago.kiro-backup-drive",
+    "Organização e-mails": "com.kiro.organize-emails",
+    "Vault Graph Sync": "com.kiro.vault-graph-sync",
+    "Daily Vehicle Report": "com.kiro.daily-vehicle-report",
+    "Daily Support Report": "com.kiro.daily-support-report",
+    "Sprint Watcher": "com.kiro.sprint-confluence-watcher",
+    "Autobanking Confluence": "com.kiro.atualiza-dados-autobanking-confluence-15h",
+}
+_LABEL_OK = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def rerun_labels(overrides: Path = ROUTINES_OVERRIDES) -> dict[str, str]:
+    labels = dict(RERUN_LABELS)
+    try:
+        extra = json.loads(overrides.read_text())
+        labels.update({k: v for k, v in extra.items() if isinstance(v, str) and _LABEL_OK.match(v)})
+    except (OSError, ValueError, AttributeError):
+        pass
+    return labels
+
+
+async def rerun(name: str, labels: dict[str, str] | None = None) -> bool:
+    """Kickstart the routine's LaunchAgent; False for unknown names or launchctl errors."""
+    label = (labels if labels is not None else rerun_labels()).get(name)
+    if not label or not _LABEL_OK.match(label):
+        return False
+    proc = await asyncio.create_subprocess_exec(
+        "launchctl", "kickstart", f"gui/{os.getuid()}/{label}",
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+    return await proc.wait() == 0
 
 # Messages without a bold title: (pattern, routine name). First match wins.
 _KNOWN = (
@@ -68,7 +115,8 @@ def routine_of(text: str) -> tuple[str, bool] | None:
     return name[:NAME_MAX], ok
 
 
-def build_rows(messages: list[dict]) -> list[list]:
+def build_rows(messages: list[dict], labels: dict[str, str] | None = None) -> list[list]:
+    labels = RERUN_LABELS if labels is None else labels
     runs: dict[str, dict] = {}
     for msg in messages:
         found = routine_of(msg.get("text", ""))
@@ -85,7 +133,8 @@ def build_rows(messages: list[dict]) -> list[list]:
             entry["ts"], entry["ok"] = ts, ok
     ranked = sorted(runs.items(), key=lambda kv: kv[1]["ts"], reverse=True)[:ROUTINES_MAX]
     return [
-        [name, datetime.datetime.fromtimestamp(e["ts"]).strftime("%H:%M"), int(e["ok"]), e["count"]]
+        [name, datetime.datetime.fromtimestamp(e["ts"]).strftime("%H:%M"), int(e["ok"]), e["count"],
+         int(name in labels)]
         for name, e in ranked
     ]
 
@@ -120,6 +169,6 @@ class KiroRoutines:
                 cursor = (body.get("response_metadata") or {}).get("next_cursor")
                 if not cursor:
                     break
-        rows = build_rows(messages)
+        rows = build_rows(messages, rerun_labels())
         self.payloads = chunk_table("r", rows) if rows else [{"r": [], "o": 0, "n": 0}]
         return self.payloads

@@ -1284,6 +1284,147 @@ void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, b
     render_agenda();
 }
 
+// ---- Routine failure alert ----
+// A routine that just failed takes the screen: blinking red panel, its name and
+// time, and two buttons. "Rodar de novo" asks the daemon to kickstart its
+// LaunchAgent; "Dispensar" (or 10 minutes) lets rotation resume.
+#define ROUTINE_ALERT_MAX_MS (10 * 60 * 1000)
+#define ROUTINE_BLINK_MS     500
+static lv_obj_t* ralert_container;
+static lv_obj_t* ralert_panel;
+static lv_obj_t* lbl_ralert_name;
+static lv_obj_t* lbl_ralert_when;
+static lv_obj_t* lbl_ralert_status;
+static lv_obj_t* btn_ralert_rerun;
+static bool      ralert_active = false;
+static bool      ralert_rerunnable = false;
+static uint32_t  ralert_since = 0, ralert_blink_ms = 0, ralert_close_at = 0;
+static bool      ralert_blink_on = false;
+static char      ralert_name[28] = "";
+
+static void ralert_close(void);
+
+static void ralert_rerun_cb(lv_event_t* e) {
+    (void)e;
+    if (!ralert_active || !ralert_rerunnable) return;
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "{\"rr\":\"%s\"}", ralert_name);
+    ble_send_command(cmd);
+    lv_label_set_text(lbl_ralert_status, "Pedido enviado ao Mac...");
+    lv_obj_add_state(btn_ralert_rerun, LV_STATE_DISABLED);
+}
+
+static void ralert_dismiss_cb(lv_event_t* e) {
+    (void)e;
+    ralert_close();
+}
+
+static lv_obj_t* make_alert_button(lv_obj_t* parent, const char* text, lv_color_t bg, lv_event_cb_t cb) {
+    lv_obj_t* b = lv_button_create(parent);
+    lv_obj_set_style_bg_color(b, bg, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(b, 12, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_pad_hor(b, 18, 0);
+    lv_obj_set_style_pad_ver(b, 12, 0);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* l = lv_label_create(b);
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_font(l, L.reset_font, 0);
+    lv_obj_set_style_text_color(l, COL_TEXT, 0);
+    lv_obj_center(l);
+    return b;
+}
+
+static void init_routine_alert_screen(lv_obj_t* scr) {
+    ralert_container = make_screen_container(scr, "Rotina falhou");
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    ralert_panel = make_panel(ralert_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+
+    lbl_ralert_name = lv_label_create(ralert_panel);
+    lv_label_set_long_mode(lbl_ralert_name, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(lbl_ralert_name, inner_w);
+    lv_obj_set_style_text_font(lbl_ralert_name, L.pct_font, 0);
+    lv_obj_set_style_text_color(lbl_ralert_name, COL_TEXT, 0);
+    lv_obj_set_style_text_align(lbl_ralert_name, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(lbl_ralert_name, "");
+    lv_obj_align(lbl_ralert_name, LV_ALIGN_TOP_MID, 0, 6);
+
+    lbl_ralert_when = lv_label_create(ralert_panel);
+    lv_obj_set_style_text_font(lbl_ralert_when, L.reset_font, 0);
+    lv_obj_set_style_text_color(lbl_ralert_when, COL_TEXT, 0);
+    lv_label_set_text(lbl_ralert_when, "");
+    lv_obj_align(lbl_ralert_when, LV_ALIGN_TOP_MID, 0, lv_font_get_line_height(L.pct_font) + 12);
+
+    lbl_ralert_status = lv_label_create(ralert_panel);
+    lv_label_set_long_mode(lbl_ralert_status, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(lbl_ralert_status, inner_w);
+    lv_obj_set_style_text_font(lbl_ralert_status, L.axis_font, 0);
+    lv_obj_set_style_text_color(lbl_ralert_status, COL_TEXT, 0);
+    lv_obj_set_style_text_align(lbl_ralert_status, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(lbl_ralert_status, "leo-dias-news \xC2\xB7 Slack");
+    lv_obj_align(lbl_ralert_status, LV_ALIGN_CENTER, 0, 10);
+
+    btn_ralert_rerun = make_alert_button(ralert_panel, "Rodar de novo", COL_KIRO, ralert_rerun_cb);
+    lv_obj_align(btn_ralert_rerun, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_set_style_bg_color(btn_ralert_rerun, COL_BAR_BG, LV_STATE_DISABLED);
+    lv_obj_t* dismiss = make_alert_button(ralert_panel, "Dispensar", COL_BAR_BG, ralert_dismiss_cb);
+    lv_obj_align(dismiss, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+}
+
+static void ralert_open(const RoutineRow& row) {
+    if (!ralert_container) return;
+    strlcpy(ralert_name, row.name, sizeof(ralert_name));
+    ralert_rerunnable = row.rerunnable;
+    lv_label_set_text(lbl_ralert_name, row.name);
+    lv_label_set_text_fmt(lbl_ralert_when, "falhou às %s", row.time);
+    lv_label_set_text(lbl_ralert_status, row.rerunnable ? "leo-dias-news \xC2\xB7 Slack"
+                                                         : "Sem atalho para rodar de novo");
+    if (row.rerunnable) {
+        lv_obj_clear_flag(btn_ralert_rerun, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_state(btn_ralert_rerun, LV_STATE_DISABLED);
+    } else {
+        lv_obj_add_flag(btn_ralert_rerun, LV_OBJ_FLAG_HIDDEN);
+    }
+    ralert_since = ralert_blink_ms = lv_tick_get();
+    ralert_close_at = 0;
+    if (!ralert_active) {
+        ralert_active = true;
+        tap_hold = false;
+        ui_show_screen(SCREEN_ROUTINE_ALERT);
+    }
+}
+
+static void ralert_close(void) {
+    if (!ralert_active) return;
+    ralert_active = false;
+    lv_obj_set_style_bg_color(ralert_panel, COL_PANEL, 0);
+    if (current_screen == SCREEN_ROUTINE_ALERT) ui_show_screen(SCREEN_ROUTINES);
+}
+
+void ui_rerun_ack(const char* name, bool ok) {
+    if (!ralert_active || strcmp(name, ralert_name) != 0) return;
+    lv_label_set_text(lbl_ralert_status, ok ? "Rotina iniciada no Mac" : "O Mac recusou ou falhou ao iniciar");
+    if (ok) ralert_close_at = lv_tick_get() + 4000;
+    else    lv_obj_clear_state(btn_ralert_rerun, LV_STATE_DISABLED);
+}
+
+static void ralert_tick(void) {
+    if (!ralert_active) return;
+    const uint32_t now = lv_tick_get();
+    if (now - ralert_since > ROUTINE_ALERT_MAX_MS || (ralert_close_at && now >= ralert_close_at)) {
+        ralert_close();
+        return;
+    }
+    if (now - ralert_blink_ms >= ROUTINE_BLINK_MS) {
+        ralert_blink_ms = now;
+        ralert_blink_on = !ralert_blink_on;
+        lv_obj_set_style_bg_color(ralert_panel, ralert_blink_on ? COL_RED : lv_color_hex(0x5a1a14), 0);
+    }
+}
+
 // ---- Kiro routines (leo-dias-news) ----
 #define ROUTINE_NEW_MS (60 * 1000)   // a routine that just ran is highlighted this long
 static lv_obj_t*  routines_container;
@@ -1389,6 +1530,7 @@ void ui_update_routines(const RoutineRow* rows, int offset, int count, int total
                 break;
             }
         }
+        if (is_new && routines_loaded && !rows[i].ok) ralert_open(rows[i]);
         if (is_new && routines_loaded) {
             int slot = 0;
             for (int j = 1; j < ROUTINES_MAX; j++) if (routines_new_ms[j] < routines_new_ms[slot]) slot = j;
@@ -1859,6 +2001,7 @@ void ui_init(void) {
     init_games_screen(scr);
     init_live_screen(scr);
     init_meeting_screen(scr);
+    init_routine_alert_screen(scr);
     splash_init(scr);
 
     if (splash_get_root()) {
@@ -2013,6 +2156,11 @@ static void rotation_tick(void) {
         if (current_screen != SCREEN_MEETING) ui_show_screen(SCREEN_MEETING);
         return;
     }
+    // A failed routine waits for "Rodar de novo" / "Dispensar".
+    if (ralert_active) {
+        if (current_screen != SCREEN_ROUTINE_ALERT) ui_show_screen(SCREEN_ROUTINE_ALERT);
+        return;
+    }
     // A Vasco match freezes rotation on the live score until it ends.
     if (live_active) {
         if (current_screen != SCREEN_LIVE) ui_show_screen(SCREEN_LIVE);
@@ -2061,6 +2209,7 @@ static void accent_tick(void) {
 void ui_tick_anim(void) {
     accent_tick();
     meeting_tick();
+    ralert_tick();
     live_tick();
     routines_tick();
     rotation_tick();
@@ -2140,7 +2289,8 @@ static void apply_battery_visibility(void) {
 static screen_t step_screen(screen_t from, int dir) {
     screen_t s = (screen_t)((from + dir + SCREEN_COUNT) % SCREEN_COUNT);
     for (int guard = 0; guard < 3; guard++) {   // skip alert screens that aren't active
-        if ((s == SCREEN_LIVE && !live_active) || (s == SCREEN_MEETING && !meeting_active))
+        if ((s == SCREEN_LIVE && !live_active) || (s == SCREEN_MEETING && !meeting_active) ||
+            (s == SCREEN_ROUTINE_ALERT && !ralert_active))
             s = (screen_t)((s + dir + SCREEN_COUNT) % SCREEN_COUNT);
     }
     return s;
@@ -2170,6 +2320,7 @@ void ui_show_screen(screen_t screen) {
     lv_obj_add_flag(agenda_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(live_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(meeting_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ralert_container, LV_OBJ_FLAG_HIDDEN);
     splash_hide();
 
     switch (screen) {
@@ -2191,6 +2342,7 @@ void ui_show_screen(screen_t screen) {
     case SCREEN_VASCO:   lv_obj_clear_flag(games_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&games_list); break;
     case SCREEN_LIVE:    lv_obj_clear_flag(live_container, LV_OBJ_FLAG_HIDDEN); break;
     case SCREEN_MEETING: lv_obj_clear_flag(meeting_container, LV_OBJ_FLAG_HIDDEN); break;
+    case SCREEN_ROUTINE_ALERT: lv_obj_clear_flag(ralert_container, LV_OBJ_FLAG_HIDDEN); break;
     default: break;
     }
 

@@ -174,6 +174,7 @@ static bool handle_extra_json(const char* json) {
             strlcpy(rows[n].time, src[1] | "", sizeof(rows[n].time));
             rows[n].ok = (src[2] | 1) != 0;
             rows[n].runs = src[3] | 1;
+            rows[n].rerunnable = (src[4] | 0) != 0;
             n++;
         }
         ui_update_routines(rows, doc["o"] | 0, n, doc["n"] | n);
@@ -206,6 +207,10 @@ static bool handle_extra_json(const char* json) {
         JsonArray k = doc["k"].as<JsonArray>();
         if (k.isNull()) ui_update_kiro(-1, 0);
         else            ui_update_kiro(k[0] | 0, k[1] | 0);
+        return true;
+    }
+    if (doc["rrk"].is<JsonArray>()) {         // rerun acknowledgement: [name, 1 started | 0 refused]
+        ui_rerun_ack(doc["rrk"][0] | "", (doc["rrk"][1] | 0) != 0);
         return true;
     }
     if (!doc["mt"].isNull()) {               // meeting alert: [title, "HH:MM", seconds, where] or 0

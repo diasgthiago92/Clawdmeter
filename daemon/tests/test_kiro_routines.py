@@ -26,9 +26,9 @@ def test_build_rows_latest_first_with_counts():
         {"ts": ts(8, 0), "text": ""},
     ])
     assert rows == [
-        ["Board Financiamento", "11:00", 1, 2],
-        ["Backup Drive", "10:53", 0, 1],
-        ["Organização e-mails", "09:00", 1, 1],
+        ["Board Financiamento", "11:00", 1, 2, 1],
+        ["Backup Drive", "10:53", 0, 1, 1],
+        ["Organização e-mails", "09:00", 1, 1, 1],
     ]
 
 
@@ -37,3 +37,14 @@ def test_load_token(tmp_path):
     env.write_text("OTHER=1\nSLACK_BOT_TOKEN='xoxb-test'\n")
     assert load_token(env) == "xoxb-test"
     assert load_token(tmp_path / "missing") is None
+
+
+def test_rerun_only_known_routines(tmp_path):
+    import asyncio
+
+    from daemon.kiro_routines import rerun, rerun_labels
+
+    (tmp_path / "routines.json").write_text('{"Minha Rotina": "com.kiro.minha", "Ruim": "x; rm -rf /"}')
+    labels = rerun_labels(tmp_path / "routines.json")
+    assert labels["Minha Rotina"] == "com.kiro.minha" and "Ruim" not in labels
+    assert asyncio.run(rerun("Nao Existe", labels)) is False

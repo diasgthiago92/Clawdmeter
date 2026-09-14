@@ -65,6 +65,7 @@ struct RoutineRow {
     char time[6];            // "HH:MM" of the latest run
     bool ok;                 // latest run succeeded
     int  runs;               // runs today
+    bool rerunnable;         // the daemon knows how to start it again
 };
 
 // Today's Google Calendar meetings.
