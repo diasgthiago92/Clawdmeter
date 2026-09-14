@@ -613,7 +613,7 @@ static void init_usage_screen(lv_obj_t* scr) {
                          &lbl_kiro_pct, &lbl_kiro_label, &bar_kiro, &lbl_kiro_reset);
         lv_label_set_text(lbl_kiro_reset, "Sem dados do Kiro");
         panel_ag = make_usage_panel(panels,
-                         py0 + L.usage_panel_h + L.usage_panel_gap, "Gemini",
+                         py0 + L.usage_panel_h + L.usage_panel_gap, "Gemini - Daily",
                          &lbl_ag_pct, &lbl_ag_label, &bar_ag, &lbl_ag_reset);
         lv_label_set_text(lbl_ag_pct, "---");
         lv_label_set_text(lbl_ag_reset, "Sem uso do Gemini hoje");

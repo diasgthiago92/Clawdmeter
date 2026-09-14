@@ -11,6 +11,7 @@ public:
         return true;
     }
     void end(void) {}
+    bool clear(void) { return true; }
     uint8_t getUChar(const char* key, uint8_t def = 0);
     size_t  putUChar(const char* key, uint8_t value);
 };
