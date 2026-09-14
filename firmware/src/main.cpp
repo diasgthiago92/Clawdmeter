@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <lvgl.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <esp_heap_caps.h>
 
 #include "data.h"
@@ -333,6 +334,16 @@ void setup() {
     Serial.println("{\"ready\":true}");
 
     board_init();
+
+    // Wipe what the rolled-back Wi-Fi mode stored (credentials and quote catalog).
+    // Only these two NVS namespaces: BLE bonds and brightness stay intact.
+    for (const char* ns : {"wifi", "wificat"}) {
+        Preferences prefs;
+        if (prefs.begin(ns, true)) {         // read-only open fails if it never existed
+            prefs.end();
+            if (prefs.begin(ns, false)) { prefs.clear(); prefs.end(); Serial.printf("nvs: cleared %s\n", ns); }
+        }
+    }
 
     // Bring the BLE controller up before the display: its interrupt allocation
     // runs on the tiny ipc0 stack, and RGB-panel interrupts landing mid-setup
