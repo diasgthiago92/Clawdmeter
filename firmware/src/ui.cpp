@@ -615,7 +615,7 @@ static void init_usage_screen(lv_obj_t* scr) {
         panel_ag = make_usage_panel(panels,
                          py0 + L.usage_panel_h + L.usage_panel_gap, "Gemini - Daily",
                          &lbl_ag_pct, &lbl_ag_label, &bar_ag, &lbl_ag_reset);
-        lv_label_set_text(lbl_ag_pct, "---");
+        lv_label_set_text(lbl_ag_pct, "---%");
         lv_label_set_text(lbl_ag_reset, "Sem uso do Gemini hoje");
     }
 
@@ -945,13 +945,18 @@ static lv_obj_t* make_usage_scroll_box(lv_obj_t* parent, int y, int w, int visib
 
 void ui_update_antigravity(uint64_t tokens_today, int pct_of_peak, int responses) {
     if (!panel_ag) return;
+    // Like the other panels: the big number is a percentage (today vs. the
+    // busiest day of the last 30), the token count goes in the line below.
     char buf[48];
-    format_tokens(tokens_today, buf, sizeof(buf));
-    lv_label_set_text(lbl_ag_pct, buf);
+    lv_label_set_text_fmt(lbl_ag_pct, "%d%%", pct_of_peak);
     lv_bar_set_value(bar_ag, pct_of_peak, LV_ANIM_ON);
-    if (responses <= 0) lv_label_set_text(lbl_ag_reset, "Sem uso do Gemini hoje");
-    else lv_label_set_text_fmt(lbl_ag_reset, "%d %s hoje \xC2\xB7 %d%% do maior dia",
-                               responses, responses == 1 ? "resposta" : "respostas", pct_of_peak);
+    if (responses <= 0) {
+        lv_label_set_text(lbl_ag_reset, "Sem uso do Gemini hoje");
+        return;
+    }
+    format_tokens(tokens_today, buf, sizeof(buf));
+    lv_label_set_text_fmt(lbl_ag_reset, "%s tokens hoje \xC2\xB7 %d %s",
+                          buf, responses, responses == 1 ? "resposta" : "respostas");
 }
 
 static void init_models_screen(lv_obj_t* scr) {
