@@ -447,6 +447,14 @@ void ble_request_refresh(void) {
     }
 }
 
+void ble_send_command(const char* json) {
+    if (state == BLE_STATE_CONNECTED && req_char && json) {
+        req_char->setValue((const uint8_t*)json, strlen(json));
+        req_char->notify();
+        Serial.printf("BLE: command sent %s\n", json);
+    }
+}
+
 void ble_keyboard_press(uint8_t key, uint8_t modifier) {
     if (state != BLE_STATE_CONNECTED || !input_kbd) return;
     // HID report: [modifier, reserved, key1, key2, key3, key4, key5, key6]

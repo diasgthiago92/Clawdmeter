@@ -15,6 +15,7 @@ enum screen_t {
     SCREEN_VASCO,
     SCREEN_LIVE,             // only reachable while a Vasco match is on
     SCREEN_MEETING,          // only while a meeting starts within 5 minutes
+    SCREEN_ROUTINE_ALERT,    // only while a routine failure is unacknowledged
     SCREEN_COUNT,
 };
 
@@ -28,6 +29,8 @@ enum quote_table_t { QUOTES_CRYPTO, QUOTES_STOCKS, QUOTES_FIIS, QUOTE_TABLE_COUN
 void ui_update_quotes(quote_table_t table, const QuoteRow* rows, int offset, int count, int total);
 void ui_update_stock_index(const char* value, float change_pct);
 void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, bool needs_login);
+// Daemon answer to a rerun request: ok = the LaunchAgent was started.
+void ui_rerun_ack(const char* name, bool ok);
 void ui_update_routines(const RoutineRow* rows, int offset, int count, int total);
 void ui_update_games(const GameRow* rows, int offset, int count, int total);
 void ui_update_kiro(int percent, int reset_days);  // percent < 0 = hide

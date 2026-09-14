@@ -20,6 +20,8 @@ const char* ble_get_data(void);
 void ble_send_ack(void);
 void ble_send_nack(void);
 void ble_request_refresh(void);
+// Send a small JSON command to the daemon on the request characteristic (e.g. {"rr":"Backup Drive"}).
+void ble_send_command(const char* json);
 
 void ble_set_battery_level(int pct);
 
