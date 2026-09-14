@@ -27,7 +27,6 @@ from bleak.exc import BleakError
 from market_quotes import CryptoQuotes, FiiQuotes, StockQuotes
 from antigravity_usage import AntigravityUsage
 from costumes import costume_for
-from wifi_config import WIFI_FILE, load_wifi, masked
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines, rerun
 from kiro_usage import KiroActivity, KiroUsage
@@ -622,7 +621,6 @@ class Session:
     def __init__(self, client: BleakClient) -> None:
         self.client = client
         self.refresh_requested = asyncio.Event()
-        self.wifi_sent_mtime = None     # wifi.json mtime last handed to the device
 
     def _on_refresh(self, _char, data: bytearray) -> None:
         # One byte = refresh nudge; JSON = a command from the device's touch UI.
@@ -663,7 +661,7 @@ class Session:
 
     async def write_payload(self, payload: dict) -> bool:
         data = json.dumps(payload, separators=(",", ":")).encode()
-        log(f"Sending: {masked(payload) if 'wifi' in payload else data.decode()}")
+        log(f"Sending: {data.decode()}")
         try:
             await self.client.write_gatt_char(RX_CHAR_UUID, data, response=False)
             return True
@@ -680,18 +678,6 @@ class Session:
             return
         if live is not None:
             await self.write_payload(live)
-
-    async def write_wifi(self) -> None:
-        """Hand the Wi-Fi credentials to the device once per connection / file change."""
-        try:
-            mtime = WIFI_FILE.stat().st_mtime
-        except OSError:
-            return
-        if mtime == self.wifi_sent_mtime:
-            return
-        creds = load_wifi()
-        if creds and await self.write_payload({"wifi": list(creds)}):
-            self.wifi_sent_mtime = mtime
 
     async def write_extras(self, payload: dict) -> None:
         """History, per-model and market-table writes that follow a successful usage write.
@@ -738,7 +724,6 @@ class Session:
         # Santa / passista / witch on Christmas, Carnaval and Halloween.
         utc_now = datetime.datetime.now(datetime.timezone.utc)
         extras.append({"cos": costume_for(utc_now.astimezone().date(), is_match_day(_FIXTURES.events, utc_now))})
-        await self.write_wifi()
         for extra in extras:
             await asyncio.sleep(EXTRA_WRITE_GAP_S)
             if not await self.write_payload(extra):
