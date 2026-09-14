@@ -32,7 +32,7 @@ def test_latest_credit_usage_prefers_newest(tmp_path):
 
 def test_build_payload():
     now = datetime.datetime(2026, 9, 13, 12, 0, tzinfo=datetime.timezone.utc)
-    assert build_payload(CREDIT, now) == {"k": [36, 18]}
+    assert build_payload(CREDIT, now) == {"k": [36, 18, 723, 2000]}
     later = datetime.datetime(2026, 10, 2, tzinfo=datetime.timezone.utc)
     assert build_payload(CREDIT, later) == {"k": 0}
     assert build_payload(None, now) == {"k": 0}
@@ -57,3 +57,19 @@ def test_session_turns_and_activity(tmp_path):
     (tmp_path / "s1.json").write_text(json.dumps(session))
     history, in_window = KiroActivity(tmp_path).payloads(now, now - 3600)
     assert history["kp"] == 6 and in_window == 6
+
+
+def test_credits_per_request_average(tmp_path):
+    import sqlite3
+
+    from daemon.kiro_usage import DEFAULT_CREDITS_PER_REQUEST, credits_per_request
+
+    store = tmp_path / "data.sqlite3"
+    con = sqlite3.connect(store)
+    con.execute("CREATE TABLE conversations_v2 (key TEXT, conversation_id TEXT, value TEXT, created_at INT, updated_at INT)")
+    con.execute("INSERT INTO conversations_v2 VALUES ('k', 'c', ?, 0, 0)",
+                ('{"usage_info":[{"value":0.2,"unit":"credit"},{"value":0.1,"unit":"credit"}]}',))
+    con.commit()
+    con.close()
+    assert abs(credits_per_request(store) - 0.15) < 1e-9
+    assert credits_per_request(tmp_path / "missing.sqlite3") == DEFAULT_CREDITS_PER_REQUEST

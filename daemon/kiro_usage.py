@@ -4,14 +4,20 @@ Kiro bills in credits, not tokens. The IDE logs every GetUsageLimits response
 (one JSON object per line) in q-client.log; we take the newest one. No auth or
 network: the number is only as fresh as the IDE's last check.
 
-Sent as {"k": [percent, days until reset]}, or {"k": 0} when there is nothing
-current to show (no log yet, or the logged cycle has already reset).
+Sent as {"k": [percent, days until reset, credits used, credit limit]}, or
+{"k": 0} when there is nothing current to show (no log yet, or the logged cycle
+has already reset).
 
 Kiro records neither tokens nor a real model per request (every turn says
 "auto" with zero token counts), so activity comes from kiro-cli's session
 files instead: each turn's end time and request count. KiroActivity turns
 that into the 24h history line ({"hk": 96 chars, "kp": peak requests per bin})
 and the requests in the current 5h window for the Models screen.
+
+Credits per period aren't recorded by current kiro-cli versions, so the 24h and
+5h figures are *estimated*: requests x the average credits per request found in
+kiro-cli's own history (older sessions in data.sqlite3 kept a per-request
+`usage_info` credit value). The monthly total above is the real figure.
 """
 
 import datetime
@@ -26,6 +32,8 @@ LOG_GLOB = "*/exthost/kiro.kiroAgent/q-client.log"
 MARKER = "usageBreakdownList"
 KIRO_REFRESH_S = 5 * 60
 KIRO_CLI_SESSIONS = Path.home() / ".kiro" / "sessions" / "cli"
+KIRO_CLI_STORE = Path.home() / "Library" / "Application Support" / "kiro-cli" / "data.sqlite3"
+DEFAULT_CREDITS_PER_REQUEST = 0.16
 
 
 def parse_log_line(line: str) -> tuple[str, dict] | None:
@@ -74,7 +82,7 @@ def build_payload(credit: dict | None, now: datetime.datetime) -> dict:
     remaining_s = (reset - now).total_seconds()
     if limit <= 0 or remaining_s <= 0:   # stale reading from an already-reset cycle
         return {"k": 0}
-    return {"k": [min(999, round(used / limit * 100)), math.ceil(remaining_s / 86400)]}
+    return {"k": [min(999, round(used / limit * 100)), math.ceil(remaining_s / 86400), round(used), round(limit)]}
 
 
 class KiroUsage:
@@ -162,3 +170,24 @@ class KiroActivity:
             if 0 <= i < hours:
                 bins[i] += requests
         return bins
+
+
+def credits_per_request(store: Path = KIRO_CLI_STORE) -> float:
+    """Average credits per request in kiro-cli's recorded usage_info (read-only)."""
+    import re
+    import sqlite3
+    try:
+        con = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
+        try:
+            values = []
+            for (value,) in con.execute("SELECT value FROM conversations_v2"):
+                for match in re.finditer(r'"usage_info"\s*:\s*(\[[^\]]*\])', value):
+                    try:
+                        values += [float(e["value"]) for e in json.loads(match.group(1)) if e.get("unit") == "credit"]
+                    except (ValueError, KeyError, TypeError):
+                        continue
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return DEFAULT_CREDITS_PER_REQUEST
+    return sum(values) / len(values) if values else DEFAULT_CREDITS_PER_REQUEST

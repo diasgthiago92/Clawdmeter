@@ -756,6 +756,18 @@ static lv_obj_t* make_dim_label(lv_obj_t* parent, const lv_font_t* font, const c
 }
 
 // Pt-BR compact count: 950, 12 mil, 3,4 mi, 1,2 bi.
+// Kiro credits, pt-BR with one decimal: "7,4". "~" marks an estimate.
+static void format_credits(float c, char* buf, size_t len) {
+    snprintf(buf, len, "%.1f", c);
+    for (char* p = buf; *p; p++) if (*p == '.') *p = ',';
+}
+
+// Integer with pt-BR thousands separator: "2.000".
+static void format_int_ptbr(int v, char* buf, size_t len) {
+    if (v >= 1000) snprintf(buf, len, "%d.%03d", v / 1000, v % 1000);
+    else           snprintf(buf, len, "%d", v);
+}
+
 static void format_tokens(uint64_t t, char* buf, size_t len) {
     if (t >= 1000000000ULL)   snprintf(buf, len, "%.1f bi", t / 1e9);
     else if (t >= 1000000ULL) snprintf(buf, len, "%.1f mi", t / 1e6);
@@ -812,7 +824,7 @@ static void init_history_screen(lv_obj_t* scr) {
     lv_obj_set_style_text_color(lbl_history_now_unit, COL_TEXT, 0);
 
     lbl_history_peak_unit = lv_label_create(panel);
-    lv_label_set_text(lbl_history_peak_unit, "requisições");
+    lv_label_set_text(lbl_history_peak_unit, "créditos (est.)");
     lv_obj_set_style_text_font(lbl_history_peak_unit, L.axis_font, 0);
     lv_obj_set_style_text_color(lbl_history_peak_unit, COL_TEXT, 0);
     history_place_units();
@@ -1035,7 +1047,7 @@ static void init_models_screen(lv_obj_t* scr) {
 
     lv_obj_t* note = make_dim_label(panel, L.axis_font, "");
     lv_label_set_recolor(note, true);
-    lv_label_set_text_fmt(note, "#%s Claude# e #%s Gemini#: tokens  #%s Kiro#: req",
+    lv_label_set_text_fmt(note, "#%s Claude# e #%s Gemini#: tokens  #%s Kiro#: créd. est.",
                           COL_HEX_CLAUDE, COL_HEX_AG, COL_HEX_KIRO);
     lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 }
@@ -1771,7 +1783,7 @@ static void init_live_screen(lv_obj_t* scr) {
     lv_obj_align(lbl_live_status, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 }
 
-void ui_update_kiro(int percent, int reset_days) {
+void ui_update_kiro(int percent, int reset_days, int credits_used, int credit_limit) {
     kiro_pct = percent;
     kiro_reset_days = reset_days;
     if (!panel_kiro) return;
@@ -1783,7 +1795,14 @@ void ui_update_kiro(int percent, int reset_days) {
     }
     lv_label_set_text_fmt(lbl_kiro_pct, "%d%%", percent);
     lv_bar_set_value(bar_kiro, percent > 100 ? 100 : percent, LV_ANIM_ON);
-    lv_label_set_text_fmt(lbl_kiro_reset, "Renova em %d %s", reset_days, reset_days == 1 ? "dia" : "dias");
+    if (credits_used >= 0 && credit_limit > 0) {
+        char used[16], limit[16];
+        format_int_ptbr(credits_used, used, sizeof(used));
+        format_int_ptbr(credit_limit, limit, sizeof(limit));
+        lv_label_set_text_fmt(lbl_kiro_reset, "%s de %s créditos \xC2\xB7 renova em %dd", used, limit, reset_days);
+    } else {
+        lv_label_set_text_fmt(lbl_kiro_reset, "Renova em %d %s", reset_days, reset_days == 1 ? "dia" : "dias");
+    }
 }
 
 void ui_update_live(const LiveMatch* m) {
@@ -1907,7 +1926,7 @@ void ui_update_games(const GameRow* rows, int offset, int count, int total) {
 // {"hb": [claude, kiro], "tc": tokens, "tk": requests}: two 24-char base64
 // strings, each hour's segment already scaled so the tallest stack fills the plot.
 void ui_update_history_bars(const char* claude, const char* kiro, const char* ag,
-                            uint64_t tokens, int requests, uint64_t ag_tokens) {
+                            uint64_t tokens, float kiro_credits, uint64_t ag_tokens) {
     if (!lbl_history_now) return;
     static const char B64[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1935,17 +1954,18 @@ void ui_update_history_bars(const char* claude, const char* kiro, const char* ag
     lv_label_set_text(lbl_history_now, buf);
     format_tokens(ag_tokens, buf, sizeof(buf));
     lv_label_set_text(lbl_history_ag, buf);
-    lv_label_set_text_fmt(lbl_history_peak, "%d", requests);
+    format_credits(kiro_credits, buf, sizeof(buf));
+    lv_label_set_text(lbl_history_peak, buf);
     history_place_units();
     lv_label_set_text(lbl_history_empty, "Sem uso nas últimas 24h");
     if (any) lv_obj_add_flag(lbl_history_empty, LV_OBJ_FLAG_HIDDEN);
     else     lv_obj_clear_flag(lbl_history_empty, LV_OBJ_FLAG_HIDDEN);
 }
 
-void ui_update_models(const ModelUsage* models, int count, int kiro_requests, uint64_t ag_tokens) {
+void ui_update_models(const ModelUsage* models, int count, float kiro_credits, uint64_t ag_tokens) {
     if (!lbl_models_total) return;
     // Kiro gets a row after the Claude models whenever it was used in this window.
-    const bool kiro = kiro_requests > 0;
+    const bool kiro = kiro_credits > 0.0f;
     const bool ag = ag_tokens > 0;
     if (count > MODELS_MAX) count = MODELS_MAX;
     const int kiro_row = kiro ? count : -1;
@@ -1980,7 +2000,9 @@ void ui_update_models(const ModelUsage* models, int count, int kiro_requests, ui
         }
         if (i == kiro_row) {              // Kiro row: white name, purple count + bar
             lv_label_set_text(lbl_model_name[i], "Kiro \xC2\xB7 auto");
-            lv_label_set_text_fmt(lbl_model_tokens[i], "%d req", kiro_requests);
+            char cred[16];
+            format_credits(kiro_credits, cred, sizeof(cred));
+            lv_label_set_text_fmt(lbl_model_tokens[i], "~%s créd.", cred);
             lv_obj_set_style_text_color(lbl_model_tokens[i], COL_KIRO, 0);
             lv_obj_set_style_bg_color(bar_model[i], COL_KIRO, LV_PART_INDICATOR);
             lv_bar_set_value(bar_model[i], 1000, LV_ANIM_OFF);   // bars rank within each tool
