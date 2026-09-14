@@ -2,7 +2,6 @@
 #include <Wire.h>
 #include <lvgl.h>
 #include <ArduinoJson.h>
-#include "wifi_mode.h"
 #include <esp_heap_caps.h>
 
 #include "data.h"
@@ -196,10 +195,6 @@ static bool handle_extra_json(const char* json) {
         ui_update_games(games, doc["o"] | 0, n, doc["n"] | n);
         return true;
     }
-    if (doc["wifi"].is<JsonArray>()) {       // Wi-Fi credentials for the standalone mode
-        wifi_mode_set_credentials(doc["wifi"][0] | "", doc["wifi"][1] | "");
-        return true;
-    }
     if (!doc["cos"].isNull()) {              // the day's costume (Vasco match day / holidays)
         splash_set_costume(doc["cos"] | 0);
         return true;
@@ -258,9 +253,6 @@ static bool handle_extra_json(const char* json) {
                 strlcpy(rows[n].cells[c], src[c] | "", sizeof(rows[n].cells[c]));
             }
             rows[n].change_pct = last >= 0 ? (src[last] | 0.0f) : 0.0f;
-            // Remember what the Mac asked for, so the Wi-Fi mode can refresh it alone.
-            wifi_mode_capture_row(q.key[0], (doc["o"] | 0) + n, doc["n"] | 0, rows[n].cells[0],
-                                  rows[n].cells[1], q.key[0] == 'x' ? "" : rows[n].cells[3]);
             n++;
         }
         ui_update_quotes(q.table, rows, doc["o"] | 0, n, doc["n"] | n);
@@ -368,7 +360,7 @@ void setup() {
     // the BLE stack needs; the built-in allocator spills into it when the
     // internal pool is full.
     {
-        static const size_t LV_PSRAM_POOL = LV_MEM_POOL_EXPAND_SIZE;   // sized per env (platformio.ini)
+        static const size_t LV_PSRAM_POOL = LV_MEM_POOL_EXPAND_SIZE;   // 256 KB on guition/sim
         void* pool = heap_caps_malloc(LV_PSRAM_POOL, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (pool) lv_mem_add_pool(pool, LV_PSRAM_POOL);
     }
@@ -395,7 +387,6 @@ void setup() {
     ui_update_ble_status(ble_get_state(), ble_get_device_name(), ble_get_mac_address());
     ui_update_battery(power_hal_battery_pct(), power_hal_is_charging());
     ui_show_screen(SCREEN_SPLASH);
-    wifi_mode_init();   // standalone quotes/fixtures when the Mac goes quiet (after BLE + UI are up)
 
     Serial.printf("Dashboard ready (%s, %dx%d), waiting for data on BLE...\n",
         board_caps().name, W, H);
@@ -535,10 +526,8 @@ void loop() {
 
     check_serial_cmd();
 
-    wifi_mode_tick([](const char* json) { handle_extra_json(json); });
     if (ble_has_data()) {
         const char* json = ble_get_data();
-        wifi_mode_note_mac();
         if (handle_extra_json(json)) {
             ble_send_ack();
         } else if (parse_json(json, &usage)) {
