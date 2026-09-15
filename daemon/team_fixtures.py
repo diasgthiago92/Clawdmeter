@@ -200,6 +200,22 @@ class LiveMatch:
         return {"l": 0}
 
 
+ALMIRANTE_LEAD_S = 3 * 3600
+
+
+def almirante_window(events: dict[str, tuple[str, datetime.datetime]], now: datetime.datetime) -> bool:
+    """True from 3 hours before a kickoff until the end of that day (or 3 hours after
+    kickoff, for a late game running past midnight): when the Almirante mascot shows."""
+    for _, start in events.values():
+        local = start.astimezone()
+        day_end = datetime.datetime.combine(local.date() + datetime.timedelta(days=1),
+                                            datetime.time(), tzinfo=local.tzinfo)
+        until = max(day_end, local + datetime.timedelta(seconds=ALMIRANTE_LEAD_S))
+        if local - datetime.timedelta(seconds=ALMIRANTE_LEAD_S) <= now < until:
+            return True
+    return False
+
+
 def is_match_day(events: dict[str, tuple[str, datetime.datetime]], now: datetime.datetime) -> bool:
     """True when the team plays on the local calendar day of `now`."""
     today = now.astimezone().date()

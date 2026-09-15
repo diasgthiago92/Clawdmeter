@@ -86,6 +86,9 @@ static uint8_t stage_cells[GRID * GRID];
 #define CLAWD_BODY_565 0xDBAA
 #define COSTUME_PAD    11      // rows of headroom above Clawd for hats and feathers
 static int costume = SPLASH_COSTUME_NONE;
+// The Almirante joins the mascots only from 3 hours before a Vasco kickoff
+// (the daemon's {"alm": 1}), not the whole match day like the shirt.
+static bool almirante_on = false;
 // Mask values index these per costume (0 = keep the art's own color).
 static const uint16_t COSTUME_COLORS[SPLASH_COSTUME_COUNT][5] = {
     {0, 0, 0, 0, 0},
@@ -821,7 +824,7 @@ static void alm_end_turn(uint32_t now) {
     mas_turn_started = now;
 }
 static void mas_almirante_tick(uint32_t now) {
-    if (costume != SPLASH_COSTUME_VASCO) { alm_end_turn(now); return; }
+    if (!almirante_on) { alm_end_turn(now); return; }
     const uint32_t in_phase = now - ap_started;
     auto next = [&](AlmPhase p) { ap = p; ap_started = now; ap_moved_ms = now; };
     auto walk = [&](int target) -> bool {       // true once arrived
@@ -993,7 +996,7 @@ static void mas_kiro_tick(uint32_t now) {
         break;
     case KP_REST:
         if (now - mas_turn_started >= MAS_KIRO_TURN_MS) {
-            if (costume == SPLASH_COSTUME_VASCO) {   // match day: the Almirante is next
+            if (almirante_on) {                 // near kickoff: the Almirante is next
                 mas_start_almirante(now);
                 return;
             }
@@ -1304,11 +1307,11 @@ static void kiro_splash_start(bool almirante = false) {
 static void splash_rotate(void) {
     if (kiro_next) {
         kiro_next = false;
-        alm_next = costume == SPLASH_COSTUME_VASCO;
+        alm_next = almirante_on;
         kiro_splash_start();
         return;
     }
-    if (alm_next && costume == SPLASH_COSTUME_VASCO) {
+    if (alm_next && almirante_on) {
         alm_next = false;
         kiro_splash_start(true);
         return;
@@ -1558,12 +1561,17 @@ void splash_set_costume(int c) {
 #endif
     }
     if (mas_img && mas_anim) {
-        if (mas_mode == MAS_ALMIRANTE && c != SPLASH_COSTUME_VASCO) mas_show_still();   // no match: no Almirante
         if (mas_mode == MAS_KIRO) mas_anim = kiro_outfit();
         if (mas_mode == MAS_STILL || mas_mode == MAS_KIRO)
             mas_render(mas_anim, mas_frame, mas_face < 0, &mas_dsc, mas_buf, mas_img, mas_cell, mas_x, mas_feet_y);
     }
     if (mini_buf && mini_anim) mini_render();
+}
+
+void splash_set_almirante(bool on) {
+    almirante_on = on;
+    // Leaving the window mid-turn: the corner tick hands back to Clawd, the stage
+    // finishes his route and skips him on the next rotation.
 }
 
 bool splash_kiro_on_screen(void) {
