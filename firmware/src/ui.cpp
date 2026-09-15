@@ -1839,7 +1839,7 @@ static void live_tick(void) {
 }
 
 static void init_games_screen(lv_obj_t* scr) {
-    games_container = make_screen_container(scr, "Próximos Jogos do Vasco");
+    games_container = make_screen_container(scr, "Jogos do Vasco");
 
     const int panel_h = L.scr_h - L.content_y - L.margin;
     lv_obj_t* panel = make_panel(games_container, L.margin, L.content_y, L.content_w, panel_h);
