@@ -7,7 +7,9 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
   sem botões/bateria). Env `guition_4848s040`. **Não é** a Waveshare AMOLED-2.16.
 - Gravar (~2–5 min, só 115200):
   `pio run -d firmware -e guition_4848s040 -t upload --upload-port $(ls /dev/cu.usbserial-* | head -1)`
-- Serial: abrir a porta **reinicia a placa**. BLE sobe antes da tela (evita boot loop por falta de memória).
+- Serial: abrir a porta **reinicia a placa**. Comandos: `screen <nome>` (usage, agenda, history, actions, routines,
+  crypto, stocks, fiis, vasco) e `screenshot` (RGB565 **little-endian**, ~40 s). O palco da tela inicial é desenhado
+  direto no painel e não aparece no screenshot. Imagens do README em `docs/meu-clawdmeter/` (placa = captura real). BLE sobe antes da tela (evita boot loop por falta de memória).
 - LVGL: pool interno 96 KB + 256 KB na PSRAM (`LV_MEM_POOL_EXPAND_SIZE`). Sem memória, `lv_obj_create`
   trava num assert em laço infinito.
 
