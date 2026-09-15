@@ -558,9 +558,9 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_add_event_cb(usage_container, global_click_cb, LV_EVENT_CLICKED, NULL);
 
     lbl_title = lv_label_create(usage_container);
-    lv_label_set_text(lbl_title, "Consumo");
+    lv_label_set_text(lbl_title, "Consumo das IAs");
     lv_obj_set_style_text_color(lbl_title, COL_TEXT, 0);
-    fit_screen_title(lbl_title, "Consumo");
+    fit_screen_title(lbl_title, "Consumo das IAs");
 
     // Usage panels (shown when connected) live in a transparent full-size group
     // so they can be toggled against the pairing hint as one unit.
@@ -2321,7 +2321,7 @@ void ui_tick_anim(void) {
 
     uint32_t now = lv_tick_get();
 
-    // The title is fixed ("Consumo"); the daemon's wall-clock time is not shown.
+    // The title is fixed ("Consumo das IAs"); the daemon's wall-clock time is not shown.
 
     if (now - anim_msg_start >= ANIM_MSG_MS) {
         anim_msg_idx = (anim_msg_idx + 1) % ANIM_MSG_COUNT;
