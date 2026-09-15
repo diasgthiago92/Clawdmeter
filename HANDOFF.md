@@ -19,7 +19,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
 
 ## Telas (ordem de toque: direita avança, esquerda volta)
 Clawd (tela inicial) → **Consumo** (painéis Claude Daily, Gemini Daily, Kiro Monthly, Claude Weekly) →
-**Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Modelos** → **Rotinas Automáticas** →
+**Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Últimas Ações** (últimas ações de Claude, Kiro e Gemini) → **Rotinas Automáticas** →
 **Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Fundos Imobiliários** (30 FIIs) → **Próximos Jogos do Vasco**.
 Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem), **Rotina falhou** (vermelha, botão
 "Rodar de novo"), **Vasco ao vivo**.
@@ -29,6 +29,9 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem), **
   em `~/.gemini/antigravity-cli/conversations`, formato reverso-engenheirado).
 - Kiro: créditos do mês nos logs do Kiro IDE (real); 24h/5h = requisições do kiro-cli × crédito médio (estimado)
   (`kiro_usage.py`). Rotinas: Slack #leo-dias-news (`kiro_routines.py`, rerun só via lista fixa + launchctl).
+- Últimas Ações (`ai_actions.py`, payload `{"a": [[ia, "HH:MM", texto]], "o", "n"}`): tool_use dos transcripts do
+  Claude, `__tool_use_purpose` das sessões do kiro-cli (hora = prompt do turno) e `toolAction` dos passos do
+  Antigravity. Até 6 por IA, últimas 24h. Substituiu a antiga tela Modelos (15/09/2026).
 - Agenda: Google Calendar read-only (`google_agenda.py`, login em `google_calendar_login.py`).
 - Cotações: CoinGecko, Yahoo, Fundamentus (`market_quotes.py`). Vasco: ESPN (`team_fixtures.py`).
 - Fantasias do dia (`costumes.py`): Vasco em dia de jogo > Natal > Carnaval > Halloween.

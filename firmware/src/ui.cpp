@@ -283,7 +283,7 @@ static const RotationStep ROTATION[] = {
     {SCREEN_USAGE,   48000},   // 40%
     {SCREEN_AGENDA,  12000},
     {SCREEN_HISTORY, 12000},   // 10%
-    {SCREEN_MODELS,  12000},   // 10%
+    {SCREEN_ACTIONS, 12000},   // 10%
     {SCREEN_ROUTINES, 12000},
     {SCREEN_CRYPTO,  24000},   // 20%
     {SCREEN_STOCKS,  12000},   // 10%
@@ -665,15 +665,15 @@ static lv_obj_t* lbl_history_now_unit;   // "tokens do Claude", under the Claude
 static lv_obj_t* lbl_history_peak_unit;  // "requisições do Kiro", under the Kiro number
 static lv_obj_t* lbl_history_empty;
 
-static lv_obj_t* models_container;
-static lv_obj_t* lbl_models_total;
-static lv_obj_t* lbl_models_empty;
-#define MODEL_ROWS (MODELS_MAX + 2)     // Claude models + Kiro + Antigravity rows
-#define MODEL_VISIBLE_ROWS 4
-static lv_obj_t* model_rows[MODEL_ROWS];
-static lv_obj_t* lbl_model_name[MODEL_ROWS];
-static lv_obj_t* lbl_model_tokens[MODEL_ROWS];
-static lv_obj_t* bar_model[MODEL_ROWS];
+// Últimas Ações: a header per AI followed by its newest tool calls.
+static lv_obj_t* actions_container;
+static lv_obj_t* lbl_actions_empty;
+#define ACTION_LIST_ROWS (ACTIONS_MAX + 3)   // actions + one header per AI
+#define ACTION_VISIBLE_ROWS 9
+static lv_obj_t*  action_time[ACTION_LIST_ROWS];
+static lv_obj_t*  action_text[ACTION_LIST_ROWS];
+static ActionRow  actions[ACTIONS_MAX];
+static int        actions_total = 0;
 
 // Titles sit between the mascot (left) and the battery (right). One that is too
 // wide for the title font drops to Tiempos 34 inside that band, wrapping onto
@@ -967,7 +967,7 @@ static bool scroll_list_tick(ScrollList* l) {
     return true;
 }
 
-static ScrollList models_list;
+static ScrollList actions_list;
 static ScrollList usage_list;
 
 static lv_obj_t* make_usage_scroll_box(lv_obj_t* parent, int y, int w, int visible_rows, int row_h) {
@@ -992,63 +992,43 @@ void ui_update_antigravity(uint64_t tokens_today, int pct_of_peak, int responses
                           buf, responses, responses == 1 ? "resposta" : "respostas");
 }
 
-static void init_models_screen(lv_obj_t* scr) {
-    models_container = make_screen_container(scr, "Modelos");
+static void init_actions_screen(lv_obj_t* scr) {
+    actions_container = make_screen_container(scr, "Últimas Ações");
 
     const int panel_h = L.scr_h - L.content_y - L.margin;
-    lv_obj_t* panel = make_panel(models_container, L.margin, L.content_y, L.content_w, panel_h);
+    lv_obj_t* panel = make_panel(actions_container, L.margin, L.content_y, L.content_w, panel_h);
     const int inner_w = L.content_w - 2 * L.panel_pad_x;
     const int inner_h = panel_h - 2 * L.panel_pad_y;
 
-    lbl_models_total = lv_label_create(panel);
-    lv_label_set_text(lbl_models_total, "---");
-    lv_obj_set_style_text_font(lbl_models_total, L.pct_font, 0);
-    lv_obj_set_style_text_color(lbl_models_total, COL_ACCENT, 0);   // Claude tokens
-    lv_obj_set_pos(lbl_models_total, 0, 0);
+    const lv_font_t* font = L.table_font_dense;
+    const int axis_h = lv_font_get_line_height(L.axis_font);
+    const int line_h = lv_font_get_line_height(font);
+    const int row_h  = (inner_h - axis_h - 6) / ACTION_VISIBLE_ROWS;
+    const int time_w = inner_w * 17 / 100;
+    lv_obj_t* box = scroll_list_create(&actions_list, panel, 0, 0, inner_w, ACTION_VISIBLE_ROWS, row_h);
 
-    lv_obj_t* pill = make_pill(panel, "Sessão 5h");
-    lv_obj_align(pill, LV_ALIGN_TOP_RIGHT, 0, 1);
+    for (int i = 0; i < ACTION_LIST_ROWS; i++) {
+        action_time[i] = lv_label_create(box);
+        lv_obj_set_style_text_font(action_time[i], font, 0);
+        lv_obj_set_pos(action_time[i], 0, i * row_h + (row_h - line_h) / 2);
+        lv_obj_add_flag(action_time[i], LV_OBJ_FLAG_EVENT_BUBBLE);
 
-    const int axis_h  = lv_font_get_line_height(L.axis_font);
-    const int rows_y  = lv_font_get_line_height(L.pct_font) + L.panel_pad_y;
-    const int row_h   = (inner_h - rows_y - axis_h - 6) / MODEL_VISIBLE_ROWS;
-    const int name_h  = lv_font_get_line_height(L.reset_font);
-    const int bar_h   = L.bar_h / 2;
-    lv_obj_t* box = scroll_list_create(&models_list, panel, 0, rows_y, inner_w, MODEL_VISIBLE_ROWS, row_h);
+        action_text[i] = lv_label_create(box);
+        lv_obj_set_style_text_font(action_text[i], font, 0);
+        lv_obj_set_style_text_color(action_text[i], COL_TEXT, 0);
+        lv_label_set_long_mode(action_text[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_pos(action_text[i], time_w, i * row_h + (row_h - line_h) / 2);
+        lv_obj_set_size(action_text[i], inner_w - time_w, line_h);   // one line, ends in "..."
+        lv_obj_add_flag(action_text[i], LV_OBJ_FLAG_EVENT_BUBBLE);
 
-    for (int i = 0; i < MODEL_ROWS; i++) {
-        lv_obj_t* row = lv_obj_create(box);
-        lv_obj_set_pos(row, 0, i * row_h);
-        lv_obj_set_size(row, inner_w, row_h);
-        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(row, 0, 0);
-        lv_obj_set_style_pad_all(row, 0, 0);
-        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
-
-        lbl_model_name[i] = lv_label_create(row);
-        lv_obj_set_style_text_font(lbl_model_name[i], L.reset_font, 0);
-        lv_obj_set_style_text_color(lbl_model_name[i], COL_TEXT, 0);
-        lv_obj_set_pos(lbl_model_name[i], 0, 0);
-
-        lbl_model_tokens[i] = make_dim_label(row, L.reset_font, "");
-        lv_obj_align(lbl_model_tokens[i], LV_ALIGN_TOP_RIGHT, 0, 0);
-
-        bar_model[i] = make_bar(row, 0, name_h + 4, inner_w, bar_h);
-        lv_bar_set_range(bar_model[i], 0, 1000);
-        lv_obj_set_style_bg_color(bar_model[i], COL_ACCENT, LV_PART_INDICATOR);
-
-        model_rows[i] = row;
-        lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(action_time[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(action_text[i], LV_OBJ_FLAG_HIDDEN);
     }
 
-    lbl_models_empty = make_dim_label(panel, L.reset_font, "Nenhum uso nesta sessão");
-    lv_obj_align(lbl_models_empty, LV_ALIGN_CENTER, 0, 0);
+    lbl_actions_empty = make_dim_label(panel, L.reset_font, "Buscando ações...");
+    lv_obj_align(lbl_actions_empty, LV_ALIGN_CENTER, 0, 0);
 
-    lv_obj_t* note = make_dim_label(panel, L.axis_font, "");
-    lv_label_set_recolor(note, true);
-    lv_label_set_text_fmt(note, "#%s Claude# e #%s Gemini#: tokens  #%s Kiro#: créd. est.",
-                          COL_HEX_CLAUDE, COL_HEX_AG, COL_HEX_KIRO);
+    lv_obj_t* note = make_dim_label(panel, L.axis_font, "Últimas 24h \xC2\xB7 neste Mac");
     lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 }
 
@@ -1962,66 +1942,50 @@ void ui_update_history_bars(const char* claude, const char* kiro, const char* ag
     else     lv_obj_clear_flag(lbl_history_empty, LV_OBJ_FLAG_HIDDEN);
 }
 
-void ui_update_models(const ModelUsage* models, int count, float kiro_credits, uint64_t ag_tokens) {
-    if (!lbl_models_total) return;
-    // Kiro gets a row after the Claude models whenever it was used in this window.
-    const bool kiro = kiro_credits > 0.0f;
-    const bool ag = ag_tokens > 0;
-    if (count > MODELS_MAX) count = MODELS_MAX;
-    const int kiro_row = kiro ? count : -1;
-    const int ag_row = ag ? count + (kiro ? 1 : 0) : -1;
-    models_list.rows = count + (kiro ? 1 : 0) + (ag ? 1 : 0);
-    uint64_t total = 0, top = 0;
+// Rows arrive grouped by AI (Claude, Kiro, Gemini); each group gets a header in
+// the AI's color. Times use the AI's color, action text is white.
+static void render_actions(void) {
+    static const char* const NAMES[3] = {"Claude", "Kiro", "Gemini"};
+    const lv_color_t colors[3] = {COL_ACCENT, COL_KIRO, COL_AG};
+    int row = 0, last_ai = -1;
+    for (int i = 0; i < actions_total && row < ACTION_LIST_ROWS; i++) {
+        const ActionRow& a = actions[i];
+        if (!a.text[0] || a.ai > 2) continue;   // chunk not arrived yet
+        if (a.ai != last_ai) {                   // group header: AI name across the row
+            last_ai = a.ai;
+            lv_label_set_text(action_time[row], NAMES[a.ai]);
+            lv_obj_set_style_text_color(action_time[row], colors[a.ai], 0);
+            lv_obj_clear_flag(action_time[row], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(action_text[row], LV_OBJ_FLAG_HIDDEN);
+            if (++row >= ACTION_LIST_ROWS) break;
+        }
+        lv_label_set_text(action_time[row], a.time);
+        lv_obj_set_style_text_color(action_time[row], colors[a.ai], 0);
+        lv_label_set_text(action_text[row], a.text);
+        lv_obj_set_style_text_color(action_text[row], a.time[0] ? COL_TEXT : COL_DIM, 0);
+        lv_obj_clear_flag(action_time[row], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(action_text[row], LV_OBJ_FLAG_HIDDEN);
+        row++;
+    }
+    for (int i = row; i < ACTION_LIST_ROWS; i++) {
+        lv_obj_add_flag(action_time[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(action_text[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    actions_list.rows = row;
+    lv_label_set_text(lbl_actions_empty, "Nenhuma ação registrada");
+    if (row > 0) lv_obj_add_flag(lbl_actions_empty, LV_OBJ_FLAG_HIDDEN);
+    else         lv_obj_clear_flag(lbl_actions_empty, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_update_actions(const ActionRow* rows, int offset, int count, int total) {
+    if (!actions_container) return;
+    actions_total = total > ACTIONS_MAX ? ACTIONS_MAX : total;
     for (int i = 0; i < count; i++) {
-        total += models[i].tokens;
-        if (models[i].tokens > top) top = models[i].tokens;
+        const int at = offset + i;
+        if (at >= 0 && at < actions_total) actions[at] = rows[i];
     }
-
-    char buf[24];
-    if (count == 0 && !kiro && !ag) {
-        lv_label_set_text(lbl_models_total, "0");
-        lv_obj_clear_flag(lbl_models_empty, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        format_tokens(total, buf, sizeof(buf));
-        lv_label_set_text(lbl_models_total, buf);
-        lv_obj_add_flag(lbl_models_empty, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    for (int i = 0; i < MODEL_ROWS; i++) {
-        if (i == ag_row) {                     // Antigravity row: white name, light-blue tokens + bar
-            lv_label_set_text(lbl_model_name[i], "Gemini");
-            format_tokens(ag_tokens, buf, sizeof(buf));
-            lv_label_set_text(lbl_model_tokens[i], buf);
-            lv_obj_set_style_text_color(lbl_model_tokens[i], COL_AG, 0);
-            lv_obj_set_style_bg_color(bar_model[i], COL_AG, LV_PART_INDICATOR);
-            lv_bar_set_value(bar_model[i], 1000, LV_ANIM_OFF);   // bars rank within each tool
-            lv_obj_clear_flag(model_rows[i], LV_OBJ_FLAG_HIDDEN);
-            continue;
-        }
-        if (i == kiro_row) {              // Kiro row: white name, purple count + bar
-            lv_label_set_text(lbl_model_name[i], "Kiro \xC2\xB7 auto");
-            char cred[16];
-            format_credits(kiro_credits, cred, sizeof(cred));
-            lv_label_set_text_fmt(lbl_model_tokens[i], "~%s créd.", cred);
-            lv_obj_set_style_text_color(lbl_model_tokens[i], COL_KIRO, 0);
-            lv_obj_set_style_bg_color(bar_model[i], COL_KIRO, LV_PART_INDICATOR);
-            lv_bar_set_value(bar_model[i], 1000, LV_ANIM_OFF);   // bars rank within each tool
-            lv_obj_clear_flag(model_rows[i], LV_OBJ_FLAG_HIDDEN);
-            continue;
-        }
-        if (i >= count) {
-            lv_obj_add_flag(model_rows[i], LV_OBJ_FLAG_HIDDEN);
-            continue;
-        }
-        lv_label_set_text(lbl_model_name[i], models[i].name);
-        format_tokens(models[i].tokens, buf, sizeof(buf));
-        lv_label_set_text(lbl_model_tokens[i], buf);
-        lv_obj_set_style_text_color(lbl_model_tokens[i], COL_ACCENT, 0);
-        lv_obj_set_style_bg_color(bar_model[i], COL_ACCENT, LV_PART_INDICATOR);
-        int32_t v = top ? (int32_t)(models[i].tokens * 1000 / top) : 0;
-        lv_bar_set_value(bar_model[i], v, LV_ANIM_OFF);
-        lv_obj_clear_flag(model_rows[i], LV_OBJ_FLAG_HIDDEN);
-    }
+    for (int j = actions_total; j < ACTIONS_MAX; j++) actions[j] = ActionRow{};
+    render_actions();
 }
 
 // ======== Public API ========
@@ -2042,7 +2006,7 @@ void ui_init(void) {
 
     init_usage_screen(scr);
     init_history_screen(scr);
-    init_models_screen(scr);
+    init_actions_screen(scr);
     init_market_screens(scr);
     init_agenda_screen(scr);
     init_routines_screen(scr);
@@ -2246,7 +2210,7 @@ static void lists_tick(void) {
     switch (current_screen) {
     case SCREEN_AGENDA:   l = &agenda_list; break;
     case SCREEN_USAGE:    l = &usage_list; break;
-    case SCREEN_MODELS:   l = &models_list; break;
+    case SCREEN_ACTIONS:  l = &actions_list; break;
     case SCREEN_ROUTINES: l = &routines_list; break;
     case SCREEN_CRYPTO:   l = &quote_tables[QUOTES_CRYPTO].list; break;
     case SCREEN_STOCKS:   l = &quote_tables[QUOTES_STOCKS].list; break;
@@ -2348,7 +2312,7 @@ static void apply_battery_visibility(void) {
 }
 
 // Taps navigate by side: right half goes forward, left half goes back, through
-// Clawd → Uso → Agenda → Consumo 24h → Modelos → Rotinas Automáticas → Criptomoedas → Bovespa → FIIs
+// Clawd → Uso → Agenda → Consumo 24h → Últimas Ações → Rotinas Automáticas → Criptomoedas → Bovespa → FIIs
 // → Fundos Imobiliários
 // → Jogos do Vasco (→ Vasco ao vivo, only during a match) → Clawd. Long lists
 // scroll with a drag instead of paging. A tap pauses auto-rotation so the
@@ -2380,7 +2344,7 @@ static void global_click_cb(lv_event_t* e) {
 void ui_show_screen(screen_t screen) {
     lv_obj_add_flag(usage_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(history_container, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(models_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(actions_container, LV_OBJ_FLAG_HIDDEN);
     for (auto& t : quote_tables) lv_obj_add_flag(t.container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(games_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(routines_container, LV_OBJ_FLAG_HIDDEN);
@@ -2395,7 +2359,7 @@ void ui_show_screen(screen_t screen) {
     case SCREEN_USAGE:   lv_obj_clear_flag(usage_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&usage_list); break;
     case SCREEN_AGENDA:  lv_obj_clear_flag(agenda_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&agenda_list); break;
     case SCREEN_HISTORY: lv_obj_clear_flag(history_container, LV_OBJ_FLAG_HIDDEN); break;
-    case SCREEN_MODELS:  lv_obj_clear_flag(models_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&models_list); break;
+    case SCREEN_ACTIONS: lv_obj_clear_flag(actions_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&actions_list); break;
     case SCREEN_ROUTINES: lv_obj_clear_flag(routines_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&routines_list); break;
     case SCREEN_CRYPTO:
     case SCREEN_STOCKS:

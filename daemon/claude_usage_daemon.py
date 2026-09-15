@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
@@ -24,6 +25,7 @@ import httpx
 from bleak import BleakClient
 from bleak.exc import BleakError
 
+from ai_actions import AiActions
 from market_quotes import CryptoQuotes, FiiQuotes, StockQuotes
 from antigravity_usage import AntigravityUsage
 from costumes import costume_for
@@ -551,6 +553,7 @@ class PlanSelector:
 # Module-level so the active-plan state survives reconnects.
 _SELECTOR = PlanSelector()
 _MODEL_TALLY = ModelTokenTally()
+_AI_ACTIONS = AiActions()
 _CRYPTO = CryptoQuotes()
 _STOCKS = StockQuotes()
 _FIIS = FiiQuotes()
@@ -711,10 +714,13 @@ class Session:
             cpr = credits_per_request()
             extras.append({"hb": encode_stacked(claude_hourly, kiro_hourly, ag_hourly),
                            "tc": sum(claude_hourly), "tk": round(sum(kiro_hourly) * cpr, 1), "ta": sum(ag_hourly)})
-            extras.append({"m": _MODEL_TALLY.top(config_dirs, since), "mk": round(kiro_requests * cpr, 1),
-                           "ma": ag_window})
         except OSError as e:
             log(f"Model tally failed: {e}")
+        try:
+            # Últimas Ações: latest tool calls of Claude, Kiro and Gemini.
+            extras.extend(_AI_ACTIONS.payloads(read_config_dirs(), now))
+        except (OSError, sqlite3.Error) as e:
+            log(f"AI actions unavailable: {e}")
         extras.append(_KIRO.get(now))
         for label, source in (("Crypto", _CRYPTO), ("Stock", _STOCKS), ("FII", _FIIS), ("Fixtures", _FIXTURES), ("Routines", _ROUTINES), ("Agenda", _AGENDA)):
             try:
