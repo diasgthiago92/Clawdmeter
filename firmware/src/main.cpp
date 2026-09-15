@@ -202,7 +202,7 @@ static bool handle_extra_json(const char* json) {
         splash_set_costume(doc["cos"] | 0);
         return true;
     }
-    if (!doc["alm"].isNull()) {              // Almirante mascot: 1 from 3 h before a Vasco kickoff
+    if (!doc["alm"].isNull()) {              // Almirante mascot: 1 from 2 h before a Vasco kickoff
         splash_set_almirante((doc["alm"] | 0) != 0);
         return true;
     }

@@ -65,5 +65,5 @@ void splash_mascot_tick(void);
 void splash_mascot_set_visible(bool v);
 // Vasco goal on the live screen: the Almirante celebrates big for a few seconds.
 void splash_almirante_goal(void);
-// Almirante window from the daemon ({"alm": 1} from 3 h before kickoff).
+// Almirante window from the daemon ({"alm": 1} from 2 h before kickoff).
 void splash_set_almirante(bool on);

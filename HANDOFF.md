@@ -35,7 +35,7 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
 - Agenda: Google Calendar read-only (`google_agenda.py`, login em `google_calendar_login.py`).
 - Cotações: CoinGecko, Yahoo, Fundamentus (`market_quotes.py`). Vasco: ESPN (`team_fixtures.py`).
 - Fantasias do dia (`costumes.py`): Vasco em dia de jogo > Natal > Carnaval > Halloween.
-- **Almirante** (mascote do Vasco): só de 3 h antes do início do jogo até o fim do dia (`{"alm": 1}`, `almirante_window` em `team_fixtures.py`; a camisa do Vasco continua valendo o dia todo). Terceiro na fila depois do Kiro. No canto de
+- **Almirante** (mascote do Vasco): só de 2 h antes do início do jogo até o fim do dia (`{"alm": 1}`, `almirante_window` em `team_fixtures.py`); a camisa do Vasco no Clawd e no Kiro continua valendo o dia inteiro. Terceiro na fila depois do Kiro. No canto de
   todas as telas (células de 2 px, `MAS_ALMIRANTE`): parado → sai andando pela esquerda → aparece grande na borda direita
   comemorando → volta andando. No palco da tela inicial (`alm_on`) anda a rota do Kiro e pula ao voltar. Gol do Vasco na
   tela ao vivo: `splash_almirante_goal()` mostra ele grande pulando no canto inferior esquerdo por 7 s. Sprite gerado por

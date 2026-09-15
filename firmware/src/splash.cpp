@@ -86,7 +86,7 @@ static uint8_t stage_cells[GRID * GRID];
 #define CLAWD_BODY_565 0xDBAA
 #define COSTUME_PAD    11      // rows of headroom above Clawd for hats and feathers
 static int costume = SPLASH_COSTUME_NONE;
-// The Almirante joins the mascots only from 3 hours before a Vasco kickoff
+// The Almirante joins the mascots only from 2 hours before a Vasco kickoff
 // (the daemon's {"alm": 1}), not the whole match day like the shirt.
 static bool almirante_on = false;
 // Mask values index these per costume (0 = keep the art's own color).
