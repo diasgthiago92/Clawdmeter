@@ -4,8 +4,8 @@
 Source: assets/almirante/almirante_recorte.png, the user's image with the white
 background removed. Each cell of a W x H grid takes the palette color covering
 most of its source pixels (black outlines count less; black parts are lifted to dark gray so they
-read on the black screen). The animation (fist pump, bob, blink) is built from
-that still here. Output uses the splash engine's splash_anim_def_t, like the
+read on the black screen). The animations (idle fist pump/blink/breathe, walk cycle, goal jump) are
+built from that still here. Output uses the splash engine's splash_anim_def_t, like the
 Kiro ghost, so the corner mascot and the splash stage draw it the same way.
 
     python3 tools/make_almirante.py [--preview out.png]
@@ -93,24 +93,32 @@ def find(grid, code, x0, x1, y0, y1):
     return [(y, x) for y in range(y0, y1) for x in range(x0, x1) if grid[y][x] == code]
 
 
-def make_frames(base):
+JUMP = 4                     # rows of headroom for the goal celebration jump
+
+
+def pad(grid, below, total):
+    """Bottom-anchored canvas `total` rows taller than the art, raised `below` rows."""
+    empty = [0] * W
+    return ([list(empty) for _ in range(total - below)] + [list(r) for r in grid]
+            + [list(empty) for _ in range(below)])
+
+
+def make_anims(base):
+    """{name: [(canvas, hold ms), ...]} for the idle, walk and celebrate animations."""
     white, skin, black = 3, 5, 1
     # Raised fist + forearm: upper right of the figure (the glove on his left).
     fist = [(y, x) for y in range(int(H * 0.28), int(H * 0.55)) for x in range(int(W * 0.66), W)
             if base[y][x]]
     # Eyes: white cells in the face band.
     eyes = find(base, white, int(W * 0.30), int(W * 0.75), int(H * 0.26), int(H * 0.40))
+    leg_top, leg_split = int(H * 0.68), int(W * 0.48)
 
-    def canvas(grid, bob):
-        empty = [0] * W
-        return [list(empty) for _ in range(BOB - bob)] + [list(r) for r in grid] + [list(empty) for _ in range(bob)]
-
-    def pumped(lift):
+    def pumped(grid, lift):
         # Fist and forearm move up; the rows they leave keep the arm, so it stretches.
-        g = [list(r) for r in base]
+        g = [list(r) for r in grid]
         for y, x in sorted(fist):
             if y - lift >= 0:
-                g[y - lift][x] = base[y][x]
+                g[y - lift][x] = grid[y][x]
         return g
 
     def blinked(grid):
@@ -119,64 +127,113 @@ def make_frames(base):
             g[y][x] = black if y == max(e[0] for e in eyes) else skin
         return g
 
-    up = pumped(FIST_LIFT)
-    seq = [
-        (canvas(base, 0), 700),
-        (canvas(up, 1), 180),       # pump: fist up, body dips
-        (canvas(base, 0), 180),
-        (canvas(up, 1), 180),
-        (canvas(base, 0), 900),
-        (canvas(blinked(base), 0), 140),
-        (canvas(base, 0), 600),
-        (canvas(base, 1), 300),     # breathe
-        (canvas(base, 0), 300),
+    def step(left: bool, lift: int = 2):
+        # One leg (and boot) lifts `lift` rows; the other stays planted.
+        g = [list(r) for r in base]
+        cols = range(0, leg_split) if left else range(leg_split, W)
+        for x in cols:
+            for y in range(leg_top, H):
+                g[y][x] = 0
+            for y in range(leg_top, H):
+                if base[y][x]:
+                    g[y - lift][x] = base[y][x]
+            for y in range(leg_top - lift, leg_top):   # keep the hips joined to the lifted leg
+                g[y][x] = g[y][x] or base[y][x]
+        return g
+
+    up = pumped(base, FIST_LIFT)
+    idle = [
+        (pad(base, 0, BOB), 700),
+        (pad(up, 0, BOB)[1:] + [[0] * W], 180),   # pump: fist up, body dips
+        (pad(base, 0, BOB), 180),
+        (pad(up, 0, BOB)[1:] + [[0] * W], 180),
+        (pad(base, 0, BOB), 900),
+        (pad(blinked(base), 0, BOB), 140),
+        (pad(base, 0, BOB), 600),
+        (pad(base, 0, BOB)[1:] + [[0] * W], 300),  # breathe
+        (pad(base, 0, BOB), 300),
     ]
-    return seq
+    # Walk cycle, bottom-anchored like the idle pose (no bob row).
+    walk = [
+        (pad(step(True), 0, 1), 150),
+        (pad(base, 0, 1)[1:] + [[0] * W], 110),    # passing pose dips a row
+        (pad(step(False), 0, 1), 150),
+        (pad(base, 0, 1)[1:] + [[0] * W], 110),
+    ]
+    # Goal: crouch, jump with the fist up, land, pump twice.
+    high = pumped(base, FIST_LIFT + 1)
+    crouch = [list(r) for r in base][:-1] + [list(base[-1])]
+    celebrate = [
+        (pad(crouch, 0, JUMP), 160),
+        (pad(high, 2, JUMP), 90),
+        (pad(high, 4, JUMP), 260),
+        (pad(high, 2, JUMP), 90),
+        (pad(base, 0, JUMP), 160),
+        (pad(up, 0, JUMP), 170),
+        (pad(base, 0, JUMP), 170),
+        (pad(up, 0, JUMP), 170),
+        (pad(base, 0, JUMP), 300),
+    ]
+    return {"almirante": idle, "almirante_walk": walk, "almirante_celebrate": celebrate}
 
 
-def emit(seq) -> str:
-    h = H + BOB
+def emit(anims) -> str:
     palette = [0x0000] + [rgb565(c[2]) for c in COLORS]
     palette += [0x0000] * (16 - len(palette))
-    frames = ",\n    ".join(",".join(str(v) for row in f for v in row) for f, _ in seq)
-    holds = ",".join(str(ms) for _, ms in seq)
-    return f"""// Generated by tools/make_almirante.py — do not hand-edit.
+    out = [f"""// Generated by tools/make_almirante.py — do not hand-edit.
 // Almirante, the Vasco mascot, from assets/almirante/almirante_recorte.png.
+// almirante_anim: idle in place · almirante_walk_anim: walk cycle ·
+// almirante_celebrate_anim: goal jump. All share one palette and width.
 #pragma once
 #include "splash_animations.h"
 
 static const uint16_t almirante_palette[16] = {{{",".join(f"0x{c:04X}" for c in palette)}}};
-static const uint8_t almirante_frames[{len(seq) * W * h}] = {{
+"""]
+    for name, seq in anims.items():
+        h = len(seq[0][0])
+        frames = ",\n    ".join(",".join(str(v) for row in f for v in row) for f, _ in seq)
+        holds = ",".join(str(ms) for _, ms in seq)
+        out.append(f"""static const uint8_t {name}_frames[{len(seq) * W * h}] = {{
     {frames}
 }};
-static const uint16_t almirante_holds[{len(seq)}] = {{{holds}}};
-
-static const splash_anim_def_t almirante_anim = {{
-    "almirante", "vasco", {W}, {h}, 0, 0, {len(seq)}, 0, {len(seq) - 1}, {len(COLORS) + 1},
-    almirante_palette, almirante_frames, almirante_holds,
+static const uint16_t {name}_holds[{len(seq)}] = {{{holds}}};
+static const splash_anim_def_t {name}_anim = {{
+    "{name}", "vasco", {W}, {h}, 0, 0, {len(seq)}, 0, {len(seq) - 1}, {len(COLORS) + 1},
+    almirante_palette, {name}_frames, {name}_holds,
 }};
-"""
+""")
+    return "\n".join(out)
 
 
-def preview(seq, path, scale=8):
-    h = H + BOB
+def preview(anims, path, scale=6):
     pal = [(0, 0, 0)] + [c[2] for c in COLORS]
-    n = len(seq)
-    data = bytearray()
-    for y in range(h * scale):
-        for i in range(n):
-            f = seq[i][0]
-            for x in range(W * scale):
-                data += bytes(pal[f[y // scale][x // scale]])
-            data += bytes((40, 40, 40)) * scale        # gap between frames
-    width = n * (W * scale + scale)
-    subprocess.run(["magick", "-size", f"{width}x{h * scale}", "-depth", "8", "rgb:-", path],
-                   input=bytes(data), check=True)
+    rows = []
+    hmax = max(len(seq[0][0]) for seq in anims.values())
+    for seq in anims.values():
+        n = len(seq)
+        data = bytearray()
+        for y in range(hmax * scale):
+            for f, _ in seq:
+                off = hmax - len(f)
+                for x in range(W * scale):
+                    gy = y // scale - off
+                    data += bytes(pal[f[gy][x // scale]] if gy >= 0 else (0, 0, 0))
+                data += bytes((40, 40, 40)) * scale
+        rows.append((n * (W * scale + scale), data))
+    width = max(w for w, _ in rows)
+    blob = bytearray()
+    for w, data in rows:
+        line = w // 1
+        for y in range(hmax * scale):
+            chunk = data[y * line * 3:(y + 1) * line * 3]
+            blob += chunk + bytes((20, 20, 20)) * (width - w)
+    subprocess.run(["magick", "-size", f"{width}x{hmax * scale * len(rows)}", "-depth", "8", "rgb:-", path],
+                   input=bytes(blob), check=True)
 
 
 if __name__ == "__main__":
-    seq = make_frames(load_cells())
-    OUT.write_text(emit(seq))
-    print(f"wrote {OUT} ({len(seq)} frames, {W}x{H + BOB} cells)")
+    anims = make_anims(load_cells())
+    OUT.write_text(emit(anims))
+    print(f"wrote {OUT}: " + ", ".join(f"{k} {len(v)} frames" for k, v in anims.items()))
     if "--preview" in sys.argv:
-        preview(seq, sys.argv[sys.argv.index("--preview") + 1])
+        preview(anims, sys.argv[sys.argv.index("--preview") + 1])

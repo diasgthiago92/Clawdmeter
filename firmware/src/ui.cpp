@@ -1841,7 +1841,10 @@ void ui_update_live(const LiveMatch* m) {
     lv_label_set_text(lbl_live_team[1], m->away);
     const int goals[2] = {m->home_goals, m->away_goals};
     for (int i = 0; i < 2; i++) {
-        if (live_goals[i] >= 0 && goals[i] > live_goals[i]) live_goal_ms[i] = now;
+        if (live_goals[i] >= 0 && goals[i] > live_goals[i]) {
+            live_goal_ms[i] = now;
+            if (strstr(i == 0 ? m->home : m->away, "Vasco")) splash_almirante_goal();   // our goal
+        }
         live_goals[i] = goals[i];
         lv_label_set_text_fmt(lbl_live_score[i], "%d", goals[i]);
     }
