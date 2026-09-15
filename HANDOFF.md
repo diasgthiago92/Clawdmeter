@@ -35,6 +35,9 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
 - Agenda: Google Calendar read-only (`google_agenda.py`, login em `google_calendar_login.py`).
 - Cotações: CoinGecko, Yahoo, Fundamentus (`market_quotes.py`). Vasco: ESPN (`team_fixtures.py`).
 - Fantasias do dia (`costumes.py`): Vasco em dia de jogo > Natal > Carnaval > Halloween.
+- **Almirante** (mascote do Vasco): só em dia de jogo (`cos` = Vasco). Terceiro na fila depois do Kiro, no canto de
+  todas as telas (células de 2 px, `MAS_ALMIRANTE`) e no palco da tela inicial (`alm_on`). Sprite gerado por
+  `tools/make_almirante.py` a partir de `assets/almirante/almirante_recorte.png` → `firmware/src/almirante.h`.
 
 ## Simulador e vídeos
 - `pio run -d firmware -e sim_demo` (tempos acelerados). Roteiro com `screen`/`tap`/`drag`/`quit`.
