@@ -63,3 +63,5 @@ void splash_flyer_tick(int left, int right, int center_y);
 lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cell);
 void splash_mascot_tick(void);
 void splash_mascot_set_visible(bool v);
+// Vasco goal on the live screen: the Almirante celebrates big for a few seconds.
+void splash_almirante_goal(void);

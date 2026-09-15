@@ -722,6 +722,10 @@ lv_obj_t* splash_mascot_create(lv_obj_t *parent, int slot_x, int feet_y, int cel
     const size_t ghost_bytes =                          // the Kiro ghost peeks in with this buffer too
         (size_t)(kiro_ghost_anim.w * mas_lurk_cell) * (kiro_ghost_anim.h * mas_lurk_cell) * 3;
     if (lurk_bytes && ghost_bytes > lurk_bytes) lurk_bytes = ghost_bytes;
+    const int alm_big = mas_lurk_cell * 5 / 8 > 0 ? mas_lurk_cell * 5 / 8 : 1;   // alm_big_cell()
+    const size_t alm_bytes =                            // the Almirante's big poses share it
+        (size_t)(almirante_celebrate_anim.w * alm_big) * (almirante_celebrate_anim.h * alm_big) * 3;
+    if (lurk_bytes && alm_bytes > lurk_bytes) lurk_bytes = alm_bytes;
     mas_buf      = (uint8_t*)heap_caps_malloc(mas_bytes,  MALLOC_CAP_SPIRAM);
     mas_lurk_buf = lurk_bytes ? (uint8_t*)heap_caps_malloc(lurk_bytes, MALLOC_CAP_SPIRAM) : NULL;
     if (!mas_buf) return NULL;
@@ -754,16 +758,51 @@ static void mas_start_kiro(uint32_t now) {
 // The Almirante is drawn finer than Clawd (2 px cells on the large layout) so
 // his face and hat read at the corner size; same feet line, centered on the slot.
 static int alm_cell(void) { return mas_cell > 2 ? mas_cell - 1 : 1; }
+// Big poses (peek at the right edge, goal celebration) use a smaller cell than
+// the Kiro ghost's so his taller sprite fits the shared lurk buffer.
+static int alm_big_cell(void) { return mas_lurk_cell * 5 / 8 > 0 ? mas_lurk_cell * 5 / 8 : 1; }
 static int alm_slot_x(void) {
     const splash_anim_def_t *still = anim_by_name("walking");
     const int still_w = still ? still->w * mas_cell : 0;
     return mas_slot_x + (still_w - almirante_anim.w * alm_cell()) / 2;
 }
+
+// His corner turn: idle in the slot, walk off left, pop up big at the right
+// edge celebrating, walk back in from the right, idle until the turn ends.
+enum AlmPhase { AP_IDLE, AP_WALK_OFF, AP_PEEK_IN, AP_PEEK_HOLD, AP_PEEK_OUT, AP_WALK_IN, AP_REST };
+#define ALM_IDLE_MS       6000
+#define ALM_WALK_PX_S     55
+#define ALM_PEEK_SLIDE_MS 500
+#define ALM_PEEK_HOLD_MS  3200
+static AlmPhase ap = AP_IDLE;
+static uint32_t ap_started = 0, ap_moved_ms = 0;
+static const splash_anim_def_t *alm_anim = &almirante_anim;
+// Goal celebration (live match): big jumping Almirante in the bottom-left corner.
+#define ALM_GOAL_MS 7000
+static uint32_t alm_goal_until = 0;
+
+static void alm_set_anim(const splash_anim_def_t *a, uint32_t now) {
+    if (alm_anim == a) return;
+    alm_anim = a;
+    mas_frame = 0;
+    mas_frame_started = now;
+}
+static bool alm_advance(uint32_t now) {        // true when the frame changed
+    if (now - mas_frame_started < alm_anim->holds[mas_frame % alm_anim->frame_count]) return false;
+    mas_frame = (mas_frame + 1) % alm_anim->frame_count;
+    mas_frame_started = now;
+    return true;
+}
 static void mas_render_almirante(void) {
-    mas_render(&almirante_anim, mas_frame, false, &mas_dsc, mas_buf, mas_img,
+    mas_render(alm_anim, mas_frame % alm_anim->frame_count, mas_face < 0, &mas_dsc, mas_buf, mas_img,
                alm_cell(), mas_x, mas_feet_y);
 }
+static void alm_draw_big(int x, int feet_y, bool mirror) {
+    mas_render(alm_anim, mas_frame % alm_anim->frame_count, mirror, &mas_lurk_dsc, mas_lurk_buf,
+               mas_lurk_img, alm_big_cell(), x, feet_y);
+}
 static void mas_start_almirante(uint32_t now) {
+    alm_anim = &almirante_anim;
     mas_anim = &almirante_anim;
     mas_frame = 0;
     mas_frame_started = now;
@@ -771,18 +810,118 @@ static void mas_start_almirante(uint32_t now) {
     mas_x = alm_slot_x();
     mas_mode = MAS_ALMIRANTE;
     mas_turn_started = now;
+    ap = AP_IDLE;
+    ap_started = ap_moved_ms = now;
     mas_render_almirante();
 }
+static void alm_end_turn(uint32_t now) {
+    if (mas_lurk_img) lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
+    mas_show_still();                           // back to Clawd
+    mas_turn_started = now;
+}
 static void mas_almirante_tick(uint32_t now) {
-    if (now - mas_turn_started >= MAS_ALMIRANTE_TURN_MS || costume != SPLASH_COSTUME_VASCO) {
-        mas_show_still();                       // back to Clawd
-        mas_turn_started = now;
+    if (costume != SPLASH_COSTUME_VASCO) { alm_end_turn(now); return; }
+    const uint32_t in_phase = now - ap_started;
+    auto next = [&](AlmPhase p) { ap = p; ap_started = now; ap_moved_ms = now; };
+    auto walk = [&](int target) -> bool {       // true once arrived
+        const int step = (int)((now - ap_moved_ms) * ALM_WALK_PX_S / 1000);
+        if (step > 0) {
+            ap_moved_ms = now;
+            const int d = target - mas_x;
+            mas_x = (step >= abs(d)) ? target : mas_x + (d > 0 ? step : -step);
+        }
+        return mas_x == target;
+    };
+    const int big_w = almirante_celebrate_anim.w * alm_big_cell();
+    const int big_h = almirante_celebrate_anim.h * alm_big_cell();
+    const int peek_x = mas_screen_w - big_w * 3 / 4;       // three quarters of him shows
+    const int big_feet = board_caps().height / 2 + big_h / 2;
+    bool changed = alm_advance(now);
+
+    switch (ap) {
+    case AP_IDLE:
+        alm_set_anim(&almirante_anim, now);
+        if (in_phase >= ALM_IDLE_MS && mas_lurk_img && mas_lurk_buf) next(AP_WALK_OFF);
+        break;
+    case AP_WALK_OFF:
+        alm_set_anim(&almirante_walk_anim, now);
+        mas_face = -1;
+        if (walk(-almirante_anim.w * alm_cell())) {
+            lv_obj_add_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(mas_lurk_img);
+            alm_set_anim(&almirante_celebrate_anim, now);
+            next(AP_PEEK_IN);
+        }
+        changed = true;
+        break;
+    case AP_PEEK_IN:
+    case AP_PEEK_OUT: {
+        uint32_t t = in_phase > ALM_PEEK_SLIDE_MS ? ALM_PEEK_SLIDE_MS : in_phase;
+        if (ap == AP_PEEK_OUT) t = ALM_PEEK_SLIDE_MS - t;
+        alm_draw_big(mas_screen_w - (int)((mas_screen_w - peek_x) * t / ALM_PEEK_SLIDE_MS), big_feet, true);
+        if (in_phase >= ALM_PEEK_SLIDE_MS) {
+            if (ap == AP_PEEK_IN) {
+                next(AP_PEEK_HOLD);
+            } else {
+                lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
+                mas_x = mas_screen_w;
+                alm_set_anim(&almirante_walk_anim, now);
+                next(AP_WALK_IN);
+            }
+        }
         return;
     }
-    if (now - mas_frame_started < almirante_anim.holds[mas_frame]) return;
-    mas_frame = (mas_frame + 1) % almirante_anim.frame_count;
+    case AP_PEEK_HOLD:
+        if (changed) alm_draw_big(peek_x, big_feet, true);
+        if (in_phase >= ALM_PEEK_HOLD_MS) next(AP_PEEK_OUT);
+        return;
+    case AP_WALK_IN:
+        mas_face = -1;
+        if (walk(alm_slot_x())) {
+            mas_face = +1;
+            alm_set_anim(&almirante_anim, now);
+            next(AP_REST);
+        }
+        changed = true;
+        break;
+    case AP_REST:
+        alm_set_anim(&almirante_anim, now);
+        if (now - mas_turn_started >= MAS_ALMIRANTE_TURN_MS) { alm_end_turn(now); return; }
+        break;
+    }
+    if (changed) mas_render_almirante();
+}
+
+// Goal: the Almirante jumps big in the bottom-left corner for a few seconds,
+// over whatever the corner mascot was doing (it restarts clean afterwards).
+void splash_almirante_goal(void) {
+    if (!mas_lurk_img || !mas_lurk_buf) return;
+    const uint32_t now = millis();
+    alm_goal_until = now ? now + ALM_GOAL_MS : 1;
+    alm_anim = &almirante_celebrate_anim;
+    mas_frame = 0;
     mas_frame_started = now;
-    mas_render_almirante();
+    lv_obj_clear_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(mas_lurk_img);
+}
+static bool alm_goal_tick(uint32_t now) {       // true while the celebration owns the mascots
+    if (!alm_goal_until) return false;
+    if (now >= alm_goal_until) {
+        alm_goal_until = 0;
+        lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(mas_img, LV_OBJ_FLAG_HIDDEN);
+        alm_anim = &almirante_anim;
+        mas_show_still();
+        mas_turn_started = now;
+        return false;
+    }
+    // Bottom-left: the scores sit on the right of the live panel.
+    if (alm_advance(now) || mas_frame == 0)
+        alm_draw_big(12, board_caps().height - 8, false);
+    return true;
 }
 
 static const int KP_BIG_FEET_Y_DIV = 2;   // big ghost centered vertically
@@ -876,9 +1015,13 @@ void splash_mascot_set_visible(bool v) {
         // siblings (battery icon, labels) whenever he's shown.
         lv_obj_move_foreground(mas_img);
         if (mas_lurk_img) lv_obj_move_foreground(mas_lurk_img);
+        if (alm_goal_until) return;             // celebrating a goal: leave it on screen
         if (mas_mode == MAS_ALMIRANTE) {        // screen change mid-turn: keep him in the slot
             if (mas_lurk_img) lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+            if (ap != AP_IDLE) ap = AP_REST;
             mas_x = alm_slot_x();
+            mas_face = +1;
+            alm_anim = &almirante_anim;
             mas_render_almirante();
             return;
         }
@@ -900,6 +1043,7 @@ void splash_mascot_set_visible(bool v) {
 void splash_mascot_tick(void) {
     if (!mas_img || !mas_visible || !mas_anim) return;
     const uint32_t now = millis();
+    if (alm_goal_tick(now)) return;
     if (mas_mode == MAS_KIRO) { mas_kiro_tick(now); return; }
     if (mas_mode == MAS_ALMIRANTE) { mas_almirante_tick(now); return; }
 
@@ -1110,6 +1254,8 @@ void splash_init(lv_obj_t *parent) {
 // on the same ground line as Clawd, bobs through its own frames, and glides
 // through the walk demo route: home → right edge → off left → home.
 #define KIRO_GLIDE_MS_PER_CELL 45
+#define ALM_STAGE_MS_PER_CELL  110     // the Almirante walks the same route, slower
+#define ALM_STAGE_CELEBRATE_MS 3200    // jump when he's back home
 static bool     kiro_on = false;          // the ghost owns the splash stage
 static bool     kiro_next = false;        // next rotation goes to the ghost
 static bool     alm_on = false;           // the stage guest is the Almirante (match days)
@@ -1183,14 +1329,24 @@ static void kiro_splash_tick(uint32_t now) {
         dirty = true;
     }
     const bool arrived = kiro_x == kiro_target;
-    if (!arrived && now - kiro_step_ms >= KIRO_GLIDE_MS_PER_CELL) {
+    if (alm_on) {                              // walks the route; celebrates once back home
+        const splash_anim_def_t *want = !arrived ? &almirante_walk_anim
+            : (kiro_phase == 6 && now - kiro_phase_ms < ALM_STAGE_CELEBRATE_MS) ? &almirante_celebrate_anim
+            : &almirante_anim;
+        if (want != kiro_anim) {
+            kiro_anim = want;
+            kiro_frame = 0;
+            kiro_frame_ms = now;
+            dirty = true;
+        }
+    }
+    const uint32_t step_ms = alm_on ? ALM_STAGE_MS_PER_CELL : KIRO_GLIDE_MS_PER_CELL;
+    if (!arrived && now - kiro_step_ms >= step_ms) {
         kiro_x += (kiro_target > kiro_x) ? 1 : -1;
         kiro_step_ms = now;
         dirty = true;
     }
-    if (arrived && alm_on) {                  // the Almirante stays home and animates in place
-        if (now - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) { splash_rotate(); return; }
-    } else if (arrived) {
+    if (arrived) {
         const uint32_t held = now - kiro_phase_ms;
         auto glide = [&](int target, uint8_t next) {
             kiro_target = target;
@@ -1199,7 +1355,7 @@ static void kiro_splash_tick(uint32_t now) {
             kiro_step_ms = now;
         };
         switch (kiro_phase) {
-            case 0: if (held > 2500) glide(GRID - a->w, 1); break;               // float at home
+            case 0: if (held > 2500) glide(GRID - a->w, 1); break;               // float / stand at home
             case 1: kiro_phase = 2; kiro_phase_ms = now; break;                  // reached right edge
             case 2: if (held > 1200) glide(-a->w, 3); break;                     // float at the edge
             case 3: kiro_phase = 4; kiro_phase_ms = now; break;                  // off-screen left
@@ -1208,7 +1364,7 @@ static void kiro_splash_tick(uint32_t now) {
             case 6: if (now - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) { splash_rotate(); return; } break;
         }
     }
-    if (dirty) render_frame(compose_kiro(), a->palette);
+    if (dirty) render_frame(compose_kiro(), kiro_anim->palette);
 }
 
 void splash_tick(void) {
