@@ -138,17 +138,18 @@ static bool handle_extra_json(const char* json) {
         return true;
     }
     if (doc["a"].is<JsonArray>()) {          // Últimas Ações, chunked like the tables
-        static ActionRow rows[ACTIONS_MAX];
-        memset(rows, 0, sizeof(rows));
+        // One row at a time on the stack: a static row buffer here costs internal
+        // RAM, and the RGB panel's DMA buffers need every KB of it at boot.
+        const int offset = doc["o"] | 0;
         int n = 0;
         for (JsonArray src : doc["a"].as<JsonArray>()) {
-            if (n >= ACTIONS_MAX) break;
-            rows[n].ai = src[0] | 0;
-            strlcpy(rows[n].time, src[1] | "", sizeof(rows[n].time));
-            strlcpy(rows[n].text, src[2] | "", sizeof(rows[n].text));
-            n++;
+            ActionRow row = {};
+            row.ai = src[0] | 0;
+            strlcpy(row.time, src[1] | "", sizeof(row.time));
+            strlcpy(row.text, src[2] | "", sizeof(row.text));
+            ui_set_action(offset + n++, row);
         }
-        ui_update_actions(rows, doc["o"] | 0, n, doc["n"] | n);
+        ui_actions_received(doc["n"] | (offset + n));
         return true;
     }
     if (doc["g"].is<JsonArray>()) {

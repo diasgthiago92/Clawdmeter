@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "splash.h"
+#include <esp_heap_caps.h>
 #include <lvgl.h>
 #include <time.h>
 #include "logo.h"
@@ -672,7 +673,7 @@ static lv_obj_t* lbl_actions_empty;
 #define ACTION_VISIBLE_ROWS 9
 static lv_obj_t*  action_time[ACTION_LIST_ROWS];
 static lv_obj_t*  action_text[ACTION_LIST_ROWS];
-static ActionRow  actions[ACTIONS_MAX];
+static ActionRow* actions = nullptr;   // PSRAM: internal RAM is reserved for the panel
 static int        actions_total = 0;
 
 // Titles sit between the mascot (left) and the battery (right). One that is too
@@ -1024,6 +1025,11 @@ static void init_actions_screen(lv_obj_t* scr) {
         lv_obj_add_flag(action_time[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(action_text[i], LV_OBJ_FLAG_HIDDEN);
     }
+
+    const size_t actions_size = ACTIONS_MAX * sizeof(ActionRow);
+    actions = (ActionRow*)heap_caps_malloc(actions_size, MALLOC_CAP_SPIRAM);
+    if (!actions) actions = (ActionRow*)malloc(actions_size);   // boards without PSRAM
+    if (actions) memset(actions, 0, actions_size);
 
     lbl_actions_empty = make_dim_label(panel, L.reset_font, "Buscando ações...");
     lv_obj_align(lbl_actions_empty, LV_ALIGN_CENTER, 0, 0);
@@ -1977,13 +1983,13 @@ static void render_actions(void) {
     else         lv_obj_clear_flag(lbl_actions_empty, LV_OBJ_FLAG_HIDDEN);
 }
 
-void ui_update_actions(const ActionRow* rows, int offset, int count, int total) {
-    if (!actions_container) return;
+void ui_set_action(int index, const ActionRow& row) {
+    if (actions && index >= 0 && index < ACTIONS_MAX) actions[index] = row;
+}
+
+void ui_actions_received(int total) {
+    if (!actions_container || !actions) return;
     actions_total = total > ACTIONS_MAX ? ACTIONS_MAX : total;
-    for (int i = 0; i < count; i++) {
-        const int at = offset + i;
-        if (at >= 0 && at < actions_total) actions[at] = rows[i];
-    }
     for (int j = actions_total; j < ACTIONS_MAX; j++) actions[j] = ActionRow{};
     render_actions();
 }
