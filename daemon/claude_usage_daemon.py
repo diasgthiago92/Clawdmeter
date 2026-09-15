@@ -32,6 +32,7 @@ from costumes import costume_for
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines, rerun
 from kiro_usage import KiroActivity, KiroUsage, credits_per_request
+from peripheral_battery import PeripheralBattery
 from team_fixtures import LiveMatch, TeamFixtures, is_match_day
 from usage_extras import (
     ModelTokenTally,
@@ -560,6 +561,7 @@ _FIIS = FiiQuotes()
 _FIXTURES = TeamFixtures()
 _LIVE = LiveMatch(_FIXTURES)
 _KIRO = KiroUsage()
+_PERIPHERALS = PeripheralBattery(DEVICE_NAME)
 _KIRO_ACTIVITY = KiroActivity()
 _ROUTINES = KiroRoutines()
 _ANTIGRAVITY = AntigravityUsage()
@@ -722,6 +724,12 @@ class Session:
         except (OSError, sqlite3.Error) as e:
             log(f"AI actions unavailable: {e}")
         extras.append(_KIRO.get(now))
+        if sys.platform == "darwin":
+            try:
+                # Mouse / keyboard battery for the fixed corner on the device.
+                extras.append(await _PERIPHERALS.get(await _get_cb_manager(), now))
+            except Exception as e:
+                log(f"Peripheral battery unavailable: {e}")
         for label, source in (("Crypto", _CRYPTO), ("Stock", _STOCKS), ("FII", _FIIS), ("Fixtures", _FIXTURES), ("Routines", _ROUTINES), ("Agenda", _AGENDA)):
             try:
                 extras.extend(await source.get(now))

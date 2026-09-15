@@ -206,6 +206,10 @@ static bool handle_extra_json(const char* json) {
         ui_update_antigravity(doc["ag"][0] | (uint64_t)0, doc["ag"][1] | 0, doc["ag"][2] | 0);
         return true;
     }
+    if (doc["pb"].is<JsonArray>()) {         // mouse / keyboard battery %, -1 = unknown
+        ui_update_peripherals(doc["pb"][0] | -1, doc["pb"][1] | -1);
+        return true;
+    }
     if (!doc["k"].isNull()) {                // Kiro credits: [percent, days to reset] or 0
         JsonArray k = doc["k"].as<JsonArray>();
         if (k.isNull()) ui_update_kiro(-1, 0, 0, 0);

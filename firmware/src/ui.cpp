@@ -259,6 +259,9 @@ static lv_obj_t* lbl_kiro_reset;
 
 // ---- Battery indicator (shared, on top) ----
 static lv_obj_t* battery_img;
+static lv_obj_t* lbl_periph;          // mouse / keyboard battery, top-right corner
+static bool      periph_known = false;
+static void apply_battery_visibility(void);
 static lv_obj_t* logo_img;
 static lv_image_dsc_t battery_dscs[5];  // empty, low, medium, full, charging
 
@@ -680,14 +683,16 @@ static int        actions_total = 0;
 // wide for the title font drops to Tiempos 34 inside that band, wrapping onto
 // two lines if it still doesn't fit.
 #define TITLE_MASCOT_W 90
+#define PERIPH_W       116  // mouse/keyboard battery corner, top right
 static void fit_screen_title(lv_obj_t* t, const char* text) {
     const int left  = L.margin + TITLE_MASCOT_W;
-    const int right = L.scr_w - L.margin - (board_caps().has_battery ? L.batt_w + 10 : 0);
+    const int right = L.scr_w - L.margin - (board_caps().has_battery ? L.batt_w + 10 : PERIPH_W);
     const int band_w = right - left;
+    const int side  = left > L.scr_w - right ? left : L.scr_w - right;
     lv_obj_set_style_text_font(t, L.title_font, 0);
     lv_point_t size;
     lv_text_get_size(&size, text, L.title_font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
-    if (size.x <= L.scr_w - 2 * left) {
+    if (size.x <= L.scr_w - 2 * side) {
         lv_obj_align(t, LV_ALIGN_TOP_MID, L.title_nudge, L.title_y);
         return;
     }
@@ -2056,6 +2061,37 @@ void ui_init(void) {
         lv_obj_del(battery_img);
         battery_img = nullptr;
     }
+
+    // Mouse and keyboard batteries (read by the daemon), fixed in the top-right
+    // corner on every screen but Clawd. Below the board battery when there is one.
+    lbl_periph = lv_label_create(scr);
+    lv_obj_set_style_text_font(lbl_periph, &font_styrene_16, 0);
+    lv_obj_set_style_text_color(lbl_periph, COL_DIM, 0);
+    lv_obj_set_style_text_align(lbl_periph, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_recolor(lbl_periph, true);
+    lv_label_set_text(lbl_periph, "");
+    lv_obj_set_width(lbl_periph, PERIPH_W);
+    lv_obj_set_pos(lbl_periph, L.scr_w - L.margin - PERIPH_W,
+                   battery_img ? L.batt_y + ICON_BATTERY_H + 2 : L.title_y - 12);
+    lv_obj_add_flag(lbl_periph, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Each value: battery percent, or -1 when the device isn't readable right now.
+void ui_update_peripherals(int mouse_pct, int keyboard_pct) {
+    if (!lbl_periph) return;
+    char lines[2][40];
+    const char* const names[2] = {"Mouse", "Teclado"};
+    const int pcts[2] = {mouse_pct, keyboard_pct};
+    int shown = 0;
+    for (int i = 0; i < 2; i++) {
+        if (pcts[i] < 0) { lines[i][0] = '\0'; continue; }
+        snprintf(lines[i], sizeof(lines[i]), "%s #%s %d%%#", names[i],
+                 pcts[i] <= 20 ? COL_HEX_RED : "ffffff", pcts[i]);
+        shown++;
+    }
+    lv_label_set_text_fmt(lbl_periph, "%s%s%s", lines[0], lines[0][0] && lines[1][0] ? "\n" : "", lines[1]);
+    periph_known = shown > 0;
+    apply_battery_visibility();
 }
 
 void ui_update(const UsageData* data) {
@@ -2312,6 +2348,10 @@ void ui_tick_anim(void) {
 
 static screen_t prev_non_splash_screen = SCREEN_USAGE;
 static void apply_battery_visibility(void) {
+    if (lbl_periph) {
+        if (current_screen == SCREEN_SPLASH || !periph_known) lv_obj_add_flag(lbl_periph, LV_OBJ_FLAG_HIDDEN);
+        else                                                 lv_obj_clear_flag(lbl_periph, LV_OBJ_FLAG_HIDDEN);
+    }
     if (!battery_img) return;
     if (current_screen == SCREEN_SPLASH) lv_obj_add_flag(battery_img, LV_OBJ_FLAG_HIDDEN);
     else                                  lv_obj_clear_flag(battery_img, LV_OBJ_FLAG_HIDDEN);
