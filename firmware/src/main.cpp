@@ -322,12 +322,31 @@ static void send_screenshot() {
 #endif
 }
 
+// "screen <name>": jump to a screen (QA / documentation captures). Names match
+// the simulator's scenario "screen" key.
+static void serial_show_screen(const char* name) {
+    static const struct { const char* name; screen_t s; } SCREENS[] = {
+        {"splash", SCREEN_SPLASH}, {"usage", SCREEN_USAGE}, {"agenda", SCREEN_AGENDA}, {"history", SCREEN_HISTORY},
+        {"actions", SCREEN_ACTIONS}, {"routines", SCREEN_ROUTINES}, {"crypto", SCREEN_CRYPTO},
+        {"stocks", SCREEN_STOCKS}, {"fiis", SCREEN_FIIS}, {"vasco", SCREEN_VASCO},
+    };
+    for (const auto& e : SCREENS) {
+        if (strcmp(e.name, name) == 0) {
+            ui_show_screen(e.s);
+            Serial.printf("SCREEN_OK %s\n", name);
+            return;
+        }
+    }
+    Serial.println("SCREEN_UNKNOWN");
+}
+
 static void check_serial_cmd() {
     while (Serial.available()) {
         char c = Serial.read();
         if (c == '\n' || c == '\r') {
             cmd_buf[cmd_pos] = '\0';
             if (strcmp(cmd_buf, "screenshot") == 0) send_screenshot();
+            else if (strncmp(cmd_buf, "screen ", 7) == 0) serial_show_screen(cmd_buf + 7);
             else if (strcmp(cmd_buf, "buzz") == 0)  sound_hal_play_reset();
             cmd_pos = 0;
         } else if (cmd_pos < CMD_BUF_SIZE - 1) {

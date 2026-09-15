@@ -1,3 +1,99 @@
+# Meu Clawdmeter
+
+Versão pessoal do [Clawdmeter](https://github.com/HermannBjorgvin/Clawdmeter) rodando numa
+**Guition ESP32-4848S040** (tela touch de 4", 480×480). Mostra o consumo de **Claude, Kiro e Gemini**, a agenda,
+rotinas automáticas, cotações, jogos do Vasco, e tem mascotes em pixel art que mudam de roupa conforme o dia.
+
+> **Sobre as imagens:** as marcadas como **placa** são capturas reais da tela do aparelho (framebuffer lido
+> pela serial, com dados reais). As marcadas como **simulador** rodam o mesmo firmware no simulador de desktop,
+> com dados de exemplo, nas telas que mostrariam agenda, rotinas e commits pessoais.
+
+## Telas
+
+| Consumo Atual · placa | Consumo 24 horas · placa | Criptomoedas · placa |
+| :---: | :---: | :---: |
+| <img src="docs/meu-clawdmeter/placa-consumo-atual.png" width="260"> | <img src="docs/meu-clawdmeter/placa-consumo-24h.png" width="260"> | <img src="docs/meu-clawdmeter/placa-criptomoedas.png" width="260"> |
+| Claude, Gemini e Kiro, cada um na sua cor | Barras por hora das três IAs | O Kiro espiando na borda direita |
+
+| Bovespa · simulador | Fundos Imobiliários · simulador | Jogos do Vasco · placa |
+| :---: | :---: | :---: |
+| <img src="docs/meu-clawdmeter/sim-bovespa.png" width="260"> | <img src="docs/meu-clawdmeter/sim-fiis.png" width="260"> | <img src="docs/meu-clawdmeter/placa-jogos-do-vasco.png" width="260"> |
+| 38 ações com P/VP, lista rolável | 30 FIIs | Próximos jogos (ESPN) |
+
+| Agenda de Hoje · simulador | Rotinas Automáticas · simulador | Últimas Ações · simulador |
+| :---: | :---: | :---: |
+| <img src="docs/meu-clawdmeter/sim-agenda.png" width="260"> | <img src="docs/meu-clawdmeter/sim-routines.png" width="260"> | <img src="docs/meu-clawdmeter/sim-actions.png" width="260"> |
+| Google Calendar, abre na reunião atual | Rotinas do dia, com "Rodar de novo" se falhar | Últimos commits de cada IA |
+
+| Reunião chegando · simulador | Gol do Vasco · simulador |
+| :---: | :---: |
+| <img src="docs/meu-clawdmeter/sim-meeting.png" width="260"> | <img src="docs/meu-clawdmeter/sim-goal.png" width="260"> |
+| Contagem regressiva e botão **Começar**, que abre o Meet no Mac | O Almirante comemora na tela do jogo ao vivo |
+
+## Mascotes
+
+No canto de todas as telas os mascotes se revezam: **Clawd** (Claude) e o fantasma do **Kiro**. Em datas
+especiais eles usam fantasia: **camisa do Vasco** em dia de jogo, Papai Noel no Natal, passista no Carnaval e
+bruxa no Halloween.
+
+| No canto das telas (dia de jogo) · simulador | |
+| :---: | :---: |
+| <img src="docs/meu-clawdmeter/sim-corner_clawd-topo.png" width="380"> | <img src="docs/meu-clawdmeter/sim-corner_kiro-topo.png" width="380"> |
+| Clawd com a camisa do Vasco | Kiro com a camisa do Vasco |
+| <img src="docs/meu-clawdmeter/sim-corner_almirante-topo.png" width="380"> | <img src="docs/meu-clawdmeter/sim-corner_almirante_andando-topo.png" width="380"> |
+| Almirante no lugar dele | Almirante saindo andando |
+
+| Tela inicial · simulador | | |
+| :---: | :---: | :---: |
+| <img src="docs/meu-clawdmeter/sim-palco_clawd.png" width="200"> | <img src="docs/meu-clawdmeter/sim-palco_kiro.png" width="200"> | <img src="docs/meu-clawdmeter/sim-palco_almirante.png" width="200"> |
+| Clawd | Kiro | Almirante |
+
+### Almirante
+
+O mascote do Vasco, convertido em pixel art a partir da ilustração original (`assets/almirante/`) por
+`tools/make_almirante.py`. Aparece **só a partir de 2 horas antes de um jogo do Vasco**; a camisa do Vasco no
+Clawd e no Kiro vale o dia inteiro.
+
+| Animações | Passeio no canto · simulador | Tela inicial · simulador |
+| :---: | :---: | :---: |
+| <img src="docs/meu-clawdmeter/almirante-animado.gif" width="170"> | <img src="docs/meu-clawdmeter/almirante-passeio.gif" width="260"> | <img src="docs/meu-clawdmeter/palco-almirante.gif" width="260"> |
+| Parado (soco no ar, piscada, respiração), caminhada e pulo de comemoração | Sai andando, aparece grande na borda comemorando e volta | Percorre o palco e pula ao voltar |
+
+## O que foi feito para ficar mais elegante
+
+- **Títulos limpos:** todos em Tiempos 34, numa linha, alinhados à esquerda logo depois do espaço onde o mascote
+  se mexe. Antes, títulos grandes e centralizados quebravam em duas ou três linhas e encostavam em outros elementos.
+- **Nomes mais claros:** "Consumo" virou **Consumo Atual**, "Próximos Jogos do Vasco" virou **Jogos do Vasco** e a
+  antiga tela "Modelos" deu lugar a **Últimas Ações**.
+- **Bateria do mouse e do teclado com ícones:** pequenos ícones Lucide com o percentual, numa linha fina no topo
+  direito, sem disputar espaço com o título. Abaixo de 20% ficam vermelhos. A leitura vem direto do Bluetooth.
+- **Uma cor por IA, em todo lugar:** Claude laranja (`#d97757`), Kiro roxo (`#9046ff`) e Gemini azul-claro
+  (`#64b5f6`). Números e barras na cor da ferramenta, textos em branco.
+- **Listas roláveis, nunca páginas:** tabelas longas deslizam sozinhas devagar e rolam com o dedo; cabeçalho e
+  rodapé ficam fixos.
+- **Linhas de uma só altura:** textos longos terminam em "..." em vez de quebrar e empurrar a lista.
+- **Menos poluição:** nomes de reunião, rotinas e commits cabem numa linha; horários na cor da IA à esquerda.
+- **Mascotes com personalidade:** fantasias por data, o Kiro que espia grande pela borda, e o Almirante com
+  caminhada, comemoração e reação a gol.
+- **Botões só quando fazem sentido:** o **Começar** da reunião só aparece quando há link de vídeo, e o
+  **Rodar de novo** só quando a rotina falhou.
+
+## Onde está cada coisa
+
+| Parte | Arquivo |
+| --- | --- |
+| Telas e layout | `firmware/src/ui.cpp` |
+| Mascotes e animações | `firmware/src/splash.cpp`, `tools/make_kiro_ghost.py`, `tools/make_almirante.py` |
+| Daemon do Mac (envia os dados por Bluetooth) | `daemon/claude_usage_daemon.py` |
+| Últimos commits das IAs | `daemon/ai_actions.py` |
+| Bateria do mouse e do teclado | `daemon/peripheral_battery.py` |
+| Agenda e botão Começar | `daemon/google_agenda.py` |
+| Jogos e janela do Almirante | `daemon/team_fixtures.py` |
+
+---
+
+# Projeto original (em inglês)
+
 # Clawdmeter
 
 <img src="assets/readme/waving.gif" width="120" align="right" alt="">
