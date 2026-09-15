@@ -125,7 +125,7 @@ static bool parse_json(const char* json, UsageData* out) {
     return true;
 }
 
-// History bars ("hb"), per-model ("m"), crypto ("x"), B3 ("b") and fixtures ("v") payloads arrive as their own BLE writes so
+// History bars ("hb"), actions ("a"), crypto ("x"), B3 ("b") and fixtures ("v") payloads arrive as their own BLE writes so
 // each stays under the host's write-without-response size. Returns true when
 // the JSON was one of these, leaving UsageData untouched.
 static bool handle_extra_json(const char* json) {
@@ -137,17 +137,18 @@ static bool handle_extra_json(const char* json) {
                                doc["tc"] | (uint64_t)0, doc["tk"] | 0.0f, doc["ta"] | (uint64_t)0);
         return true;
     }
-    if (doc["m"].is<JsonArray>()) {
-        static ModelUsage models[MODELS_MAX];
-        memset(models, 0, sizeof(models));
+    if (doc["a"].is<JsonArray>()) {          // Últimas Ações, chunked like the tables
+        static ActionRow rows[ACTIONS_MAX];
+        memset(rows, 0, sizeof(rows));
         int n = 0;
-        for (JsonArray row : doc["m"].as<JsonArray>()) {
-            if (n >= MODELS_MAX) break;
-            strlcpy(models[n].name, row[0] | "?", sizeof(models[n].name));
-            models[n].tokens = row[1] | (uint64_t)0;
+        for (JsonArray src : doc["a"].as<JsonArray>()) {
+            if (n >= ACTIONS_MAX) break;
+            rows[n].ai = src[0] | 0;
+            strlcpy(rows[n].time, src[1] | "", sizeof(rows[n].time));
+            strlcpy(rows[n].text, src[2] | "", sizeof(rows[n].text));
             n++;
         }
-        ui_update_models(models, n, doc["mk"] | 0.0f, doc["ma"] | (uint64_t)0);
+        ui_update_actions(rows, doc["o"] | 0, n, doc["n"] | n);
         return true;
     }
     if (doc["g"].is<JsonArray>()) {
