@@ -6,6 +6,7 @@
 #include "logo.h"
 #include "clawd_still.h"
 #include "icons.h"
+#include "periph_icons.h"
 #include "hal/board_caps.h"
 
 // Custom fonts (scaled for 314 PPI, ~1.9x from original 165 PPI)
@@ -260,7 +261,10 @@ static lv_obj_t* lbl_kiro_reset;
 
 // ---- Battery indicator (shared, on top) ----
 static lv_obj_t* battery_img;
-static lv_obj_t* lbl_periph;          // mouse / keyboard battery, top-right corner
+static lv_obj_t* periph_box;          // mouse / keyboard battery, top-right corner
+static lv_obj_t* periph_icon[2];
+static lv_obj_t* periph_pct[2];
+static lv_image_dsc_t periph_dscs[2];
 static bool      periph_known = false;
 static void apply_battery_visibility(void);
 static lv_obj_t* logo_img;
@@ -680,22 +684,22 @@ static int        actions_total = 0;
 // Titles sit between the mascot (left) and the battery (right). One that is too
 // wide for the title font drops to Tiempos 34 inside that band, wrapping onto
 // two lines if it still doesn't fit.
-#define TITLE_MASCOT_W 90
-#define TITLE_BAND_MID 61   // vertical center of the title band (mascot height)
+#define TITLE_MASCOT_CELLS 28   // widest corner-mascot act (pointing), in cells
+#define TITLE_MASCOT_GAP   12
+#define TITLE_BAND_MID     61   // vertical center of the title band (mascot height)
+// Titles are left-aligned just past the farthest point the corner mascots reach
+// while acting in place, in Tiempos 34; one wider than the band wraps.
 static void fit_screen_title(lv_obj_t* t, const char* text) {
-    const int left  = L.margin + TITLE_MASCOT_W;
+    (void)text;
+    const int left  = L.margin + TITLE_MASCOT_CELLS * (L.small_icons ? 2 : 3) + TITLE_MASCOT_GAP;
     const int right = L.scr_w - L.margin - (board_caps().has_battery ? L.batt_w + 10 : 0);
-    const int band_w = right - left;
-    // Every title uses Tiempos 34 on one line, centered in the band, so none
-    // runs into the mascot or the mouse/keyboard line above it. Only a title
-    // wider than the band wraps (two lines).
     const lv_font_t* font = &font_tiempos_34;
     const int mid_y = L.title_y < TITLE_BAND_MID ? TITLE_BAND_MID : L.title_y + lv_font_get_line_height(font) / 2;
     lv_obj_set_style_text_font(t, font, 0);
-    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_style_text_line_space(t, -6, 0);   // keep two lines clear of the panel below
     lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(t, band_w);
+    lv_obj_set_width(t, right - left);
     lv_obj_update_layout(t);
     lv_obj_set_pos(t, left, mid_y - lv_obj_get_height(t) / 2);
 }
@@ -2057,33 +2061,51 @@ void ui_init(void) {
 
     // Mouse and keyboard batteries (read by the daemon), fixed in the top-right
     // corner on every screen but Clawd. Below the board battery when there is one.
-    lbl_periph = lv_label_create(scr);
-    lv_obj_set_style_text_font(lbl_periph, &font_styrene_16, 0);
-    lv_obj_set_style_text_color(lbl_periph, COL_DIM, 0);
-    lv_obj_set_style_text_align(lbl_periph, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_label_set_recolor(lbl_periph, true);
-    lv_label_set_text(lbl_periph, "");
-    // One thin line across the top-right, above the title band.
-    const int periph_w = L.scr_w - 2 * L.margin - TITLE_MASCOT_W;
-    lv_obj_set_width(lbl_periph, periph_w);
-    lv_obj_set_pos(lbl_periph, L.scr_w - L.margin - periph_w, 4);
-    lv_obj_add_flag(lbl_periph, LV_OBJ_FLAG_HIDDEN);
+    // A row of [icon pct] pairs, right-aligned in a thin strip above the title.
+    periph_box = lv_obj_create(scr);
+    lv_obj_remove_style_all(periph_box);
+    lv_obj_set_size(periph_box, LV_SIZE_CONTENT, ICON_MOUSE_H);
+    lv_obj_set_flex_flow(periph_box, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(periph_box, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(periph_box, 4, 0);
+    lv_obj_clear_flag(periph_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(periph_box, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(periph_box, LV_ALIGN_TOP_RIGHT, -L.margin, 3);
+    init_icon_dsc_rgb565a8(&periph_dscs[0], ICON_MOUSE_W, ICON_MOUSE_H, icon_mouse_data);
+    init_icon_dsc_rgb565a8(&periph_dscs[1], ICON_KEYBOARD_W, ICON_KEYBOARD_H, icon_keyboard_data);
+    for (int i = 0; i < 2; i++) {
+        periph_icon[i] = lv_image_create(periph_box);
+        lv_image_set_src(periph_icon[i], &periph_dscs[i]);
+        periph_pct[i] = lv_label_create(periph_box);
+        lv_obj_set_style_text_font(periph_pct[i], &font_styrene_16, 0);
+        lv_obj_set_style_text_color(periph_pct[i], COL_TEXT, 0);
+        if (i == 0) lv_obj_set_style_margin_right(periph_pct[i], 10, 0);   // gap between the two pairs
+    }
+    lv_obj_add_flag(periph_box, LV_OBJ_FLAG_HIDDEN);
 }
 
 // Each value: battery percent, or -1 when the device isn't readable right now.
 void ui_update_peripherals(int mouse_pct, int keyboard_pct) {
-    if (!lbl_periph) return;
-    char lines[2][40];
-    const char* const names[2] = {"Mouse", "Teclado"};
+    if (!periph_box) return;
     const int pcts[2] = {mouse_pct, keyboard_pct};
     int shown = 0;
     for (int i = 0; i < 2; i++) {
-        if (pcts[i] < 0) { lines[i][0] = '\0'; continue; }
-        snprintf(lines[i], sizeof(lines[i]), "%s #%s %d%%#", names[i],
-                 pcts[i] <= 20 ? COL_HEX_RED : "ffffff", pcts[i]);
+        if (pcts[i] < 0) {
+            lv_obj_add_flag(periph_icon[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(periph_pct[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_label_set_text_fmt(periph_pct[i], "%d%%", pcts[i]);
+        const lv_color_t c = pcts[i] <= 20 ? THEME_RED : COL_TEXT;   // low battery turns red
+        lv_obj_set_style_text_color(periph_pct[i], c, 0);
+        lv_obj_set_style_image_recolor(periph_icon[i], c, 0);
+        lv_obj_set_style_image_recolor_opa(periph_icon[i], LV_OPA_COVER, 0);
+        lv_obj_clear_flag(periph_icon[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(periph_pct[i], LV_OBJ_FLAG_HIDDEN);
         shown++;
     }
-    lv_label_set_text_fmt(lbl_periph, "%s%s%s", lines[0], lines[0][0] && lines[1][0] ? "  \xC2\xB7  " : "", lines[1]);
+    // No trailing gap when the keyboard is hidden.
+    lv_obj_set_style_margin_right(periph_pct[0], pcts[1] < 0 ? 0 : 10, 0);
     periph_known = shown > 0;
     apply_battery_visibility();
 }
@@ -2342,9 +2364,9 @@ void ui_tick_anim(void) {
 
 static screen_t prev_non_splash_screen = SCREEN_USAGE;
 static void apply_battery_visibility(void) {
-    if (lbl_periph) {
-        if (current_screen == SCREEN_SPLASH || !periph_known) lv_obj_add_flag(lbl_periph, LV_OBJ_FLAG_HIDDEN);
-        else                                                 lv_obj_clear_flag(lbl_periph, LV_OBJ_FLAG_HIDDEN);
+    if (periph_box) {
+        if (current_screen == SCREEN_SPLASH || !periph_known) lv_obj_add_flag(periph_box, LV_OBJ_FLAG_HIDDEN);
+        else                                                 lv_obj_clear_flag(periph_box, LV_OBJ_FLAG_HIDDEN);
     }
     if (!battery_img) return;
     if (current_screen == SCREEN_SPLASH) lv_obj_add_flag(battery_img, LV_OBJ_FLAG_HIDDEN);
