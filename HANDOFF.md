@@ -49,6 +49,7 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
 ## Histórico recente e decisões
 - Modo Wi-Fi foi tentado e **revertido** (BLE ficava sem memória interna). Boot limpa as NVS `wifi`/`wificat`.
 - GitHub: https://github.com/diasgthiago92/Clawdmeter (público, branch `meu-clawdmeter`, remote `github`;
-  `origin` é o upstream). Commit + `git push github meu-clawdmeter` ao final de cada mudança.
+  `origin` é o upstream). Commit ao final de cada mudança e push **nos dois repos** (pedido do usuário em 15/09/2026):
+  `git push github meu-clawdmeter` **e** `git push lgtm meu-clawdmeter` (https://github.com/goncalvesdthiago-lgtm/clawdmeter).
 - Ideias ainda não feitas: aprovar/negar comandos do Claude Code pela tela, semáforo de sessões, lançador de
   prompts, pomodoro com agenda, carteira de investimentos, Vasco completo.
