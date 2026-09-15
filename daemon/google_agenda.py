@@ -11,8 +11,11 @@ meetings and working-location entries are skipped. Before the one-time login
 the screen gets {"g": [], "o": 0, "n": 0, "login": 1}.
 
 Meeting alert: while a meeting starts within ALERT_LEAD_S the device gets
-{"mt": [title, "HH:MM", seconds to start, where]} (where = room or video link)
+{"mt": [title, "HH:MM", seconds to start, where, joinable]} (where = room or
+video link; joinable = 1 when the meeting has a video link the Mac can open)
 and holds an alert screen with a countdown; {"mt": 0} once none is imminent.
+Its "Começar" button sends {"mg": 1}: the daemon opens that meeting's link
+(meeting_link, never a URL from the device) and answers {"mgk": 1 | 0}.
 """
 
 import datetime
@@ -54,6 +57,25 @@ def _where(ev: dict) -> str:
     return where[:WHERE_MAX]
 
 
+# Only these hosts are opened from the device's "Começar" button.
+JOIN_HOSTS = ("meet.google.com", "zoom.us", "teams.microsoft.com", "teams.live.com")
+
+
+def meeting_link(ev: dict) -> str | None:
+    """Full https video link of an event (Meet, Zoom or Teams), or None."""
+    candidates = [ev.get("hangoutLink") or ""]
+    candidates += [e.get("uri") or "" for e in (ev.get("conferenceData") or {}).get("entryPoints") or []
+                   if e.get("entryPointType") == "video"]
+    candidates += (ev.get("location") or "").split()
+    for url in candidates:
+        if not url.startswith("https://"):
+            continue
+        host = url[len("https://"):].split("/", 1)[0].split("?", 1)[0].lower()
+        if any(host == h or host.endswith("." + h) for h in JOIN_HOSTS):
+            return url
+    return None
+
+
 def _attending(ev: dict) -> bool:
     if ev.get("status") == "cancelled" or ev.get("eventType") in _SKIP_TYPES:
         return False
@@ -61,8 +83,8 @@ def _attending(ev: dict) -> bool:
     return not (me and me.get("responseStatus") == "declined")
 
 
-def build_alert(events: list[dict], now: datetime.datetime) -> dict:
-    """{"mt": [...]} for the next timed meeting starting within ALERT_LEAD_S, else {"mt": 0}."""
+def alert_event(events: list[dict], now: datetime.datetime):
+    """(start, event, seconds to start) of the meeting the alert is about, or None."""
     best = None
     for ev in events:
         start = (ev.get("start") or {}).get("dateTime")
@@ -72,11 +94,17 @@ def build_alert(events: list[dict], now: datetime.datetime) -> dict:
         secs = (s - now).total_seconds()
         if -ALERT_GRACE_S <= secs <= ALERT_LEAD_S and (best is None or s < best[0]):
             best = (s, ev, secs)
+    return best
+
+
+def build_alert(events: list[dict], now: datetime.datetime) -> dict:
+    """{"mt": [...]} for the next timed meeting starting within ALERT_LEAD_S, else {"mt": 0}."""
+    best = alert_event(events, now)
     if not best:
         return {"mt": 0}
     s, ev, secs = best
     title = (ev.get("summary") or "(sem título)").strip()[:ALERT_TITLE_MAX]
-    payload = {"mt": [title, s.strftime("%H:%M"), max(0, int(secs)), _where(ev)]}
+    payload = {"mt": [title, s.strftime("%H:%M"), max(0, int(secs)), _where(ev), int(meeting_link(ev) is not None)]}
     # One BLE write: trim the title until the escaped JSON fits.
     while len(json.dumps(payload, separators=(",", ":"))) > ALERT_BYTES and payload["mt"][0]:
         payload["mt"][0] = payload["mt"][0][:-2].rstrip()
@@ -112,6 +140,11 @@ class GoogleAgenda:
     def alert(self, now: float) -> dict:
         """Meeting alert from the last fetch, recomputed at `now` (exact countdown)."""
         return build_alert(self.events, datetime.datetime.fromtimestamp(now).astimezone())
+
+    def alert_link(self, now: float) -> str | None:
+        """Video link of the meeting on the alert screen right now, if it has one."""
+        best = alert_event(self.events, datetime.datetime.fromtimestamp(now).astimezone())
+        return meeting_link(best[1]) if best else None
 
     async def _access(self, http: httpx.AsyncClient, now: float) -> str | None:
         if self.access_token and now < self.access_expiry - 60:

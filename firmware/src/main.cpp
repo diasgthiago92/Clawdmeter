@@ -220,10 +220,14 @@ static bool handle_extra_json(const char* json) {
         ui_rerun_ack(doc["rrk"][0] | "", (doc["rrk"][1] | 0) != 0);
         return true;
     }
-    if (!doc["mt"].isNull()) {               // meeting alert: [title, "HH:MM", seconds, where] or 0
+    if (!doc["mt"].isNull()) {               // meeting alert: [title, "HH:MM", seconds, where, joinable] or 0
         JsonArray mt = doc["mt"].as<JsonArray>();
-        if (mt.isNull()) ui_update_meeting(nullptr, "", 0, "");
-        else ui_update_meeting(mt[0] | "", mt[1] | "", mt[2] | 0, mt[3] | "");
+        if (mt.isNull()) ui_update_meeting(nullptr, "", 0, "", false);
+        else ui_update_meeting(mt[0] | "", mt[1] | "", mt[2] | 0, mt[3] | "", (mt[4] | 0) != 0);
+        return true;
+    }
+    if (!doc["mgk"].isNull()) {              // answer to "Começar": 1 opened on the Mac, 0 failed
+        ui_meeting_join_ack((doc["mgk"] | 0) != 0);
         return true;
     }
     if (!doc["l"].isNull()) {

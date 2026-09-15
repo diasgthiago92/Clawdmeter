@@ -37,7 +37,9 @@ void ui_update_games(const GameRow* rows, int offset, int count, int total);
 void ui_update_kiro(int percent, int reset_days, int credits_used, int credit_limit);  // percent < 0 = hide
 void ui_update_live(const LiveMatch* match);
 // Meeting alert: title, "HH:MM", seconds to start, room/link. title == nullptr clears it.
-void ui_update_meeting(const char* title, const char* hhmm, int seconds, const char* where);   // nullptr = match over
+// joinable = the daemon can open its video link ("Começar" button).
+void ui_update_meeting(const char* title, const char* hhmm, int seconds, const char* where, bool joinable);
+void ui_meeting_join_ack(bool ok);   // daemon answer to "Começar"
 
 void ui_tick_anim(void);
 void ui_show_screen(screen_t screen);

@@ -1600,10 +1600,27 @@ static lv_obj_t* lbl_meeting_badge;
 static lv_obj_t* lbl_meeting_title;
 static lv_obj_t* lbl_meeting_when;
 static lv_obj_t* lbl_meeting_where;
+static lv_obj_t* btn_meeting_join;
+static char      meeting_where[64] = "";
 static bool      meeting_active = false;
 static uint32_t  meeting_start_ms = 0;       // lv_tick at which the meeting starts
 static uint32_t  meeting_rx_ms = 0;
 static int       meeting_shown_secs = -99999;
+
+// "Começar": the daemon opens this meeting's own video link on the Mac.
+static void meeting_join_cb(lv_event_t* e) {
+    (void)e;
+    if (!meeting_active) return;
+    ble_send_command("{\"mg\":1}");
+    lv_label_set_text(lbl_meeting_where, "Abrindo no Mac...");
+    lv_obj_add_state(btn_meeting_join, LV_STATE_DISABLED);
+}
+
+void ui_meeting_join_ack(bool ok) {
+    if (!meeting_active) return;
+    lv_label_set_text(lbl_meeting_where, ok ? "Reunião aberta no Mac" : "Não consegui abrir no Mac");
+    if (!ok) lv_obj_clear_state(btn_meeting_join, LV_STATE_DISABLED);
+}
 
 static void init_meeting_screen(lv_obj_t* scr) {
     meeting_container = make_screen_container(scr, "Reunião");
@@ -1628,10 +1645,17 @@ static void init_meeting_screen(lv_obj_t* scr) {
     lv_obj_set_style_text_color(lbl_meeting_title, COL_TEXT, 0);
     lv_obj_set_style_text_align(lbl_meeting_title, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(lbl_meeting_title, "");
-    lv_obj_align(lbl_meeting_title, LV_ALIGN_CENTER, 0, 20);
+    lv_obj_align(lbl_meeting_title, LV_ALIGN_CENTER, 0, -6);
+
+    // "Começar" at the bottom; time and link sit just above it.
+    btn_meeting_join = make_alert_button(panel, "Começar", accent_color, meeting_join_cb);
+    lv_obj_align(btn_meeting_join, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(btn_meeting_join, COL_BAR_BG, LV_STATE_DISABLED);
+    lv_obj_add_flag(btn_meeting_join, LV_OBJ_FLAG_HIDDEN);
+    const int btn_h = lv_font_get_line_height(L.reset_font) + 24;
 
     lbl_meeting_when = make_dim_label(panel, L.reset_font, "");
-    lv_obj_align(lbl_meeting_when, LV_ALIGN_BOTTOM_MID, 0, -lv_font_get_line_height(L.axis_font) - 10);
+    lv_obj_align(lbl_meeting_when, LV_ALIGN_BOTTOM_MID, 0, -btn_h - lv_font_get_line_height(L.axis_font) - 14);
 
     lbl_meeting_where = lv_label_create(panel);
     lv_label_set_long_mode(lbl_meeting_where, LV_LABEL_LONG_DOT);
@@ -1640,7 +1664,7 @@ static void init_meeting_screen(lv_obj_t* scr) {
     lv_obj_set_style_text_color(lbl_meeting_where, accent_color, 0);
     lv_obj_set_style_text_align(lbl_meeting_where, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(lbl_meeting_where, "");
-    lv_obj_align(lbl_meeting_where, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_align(lbl_meeting_where, LV_ALIGN_BOTTOM_MID, 0, -btn_h - 8);
 }
 
 static void render_meeting_count(void) {
@@ -1658,11 +1682,12 @@ static void render_meeting_count(void) {
     }
 }
 
-void ui_update_meeting(const char* title, const char* hhmm, int seconds, const char* where) {
+void ui_update_meeting(const char* title, const char* hhmm, int seconds, const char* where, bool joinable) {
     if (!meeting_container) return;
     if (!title) {
         if (!meeting_active) return;
         meeting_active = false;
+        meeting_where[0] = '\0';
         if (current_screen == SCREEN_MEETING) ui_show_screen(live_is_active() ? SCREEN_LIVE : ROTATION[0].screen);
         return;
     }
@@ -1672,7 +1697,15 @@ void ui_update_meeting(const char* title, const char* hhmm, int seconds, const c
     meeting_shown_secs = -99999;
     lv_label_set_text(lbl_meeting_title, title);
     lv_label_set_text_fmt(lbl_meeting_when, "às %s", hhmm);
-    lv_label_set_text(lbl_meeting_where, where);
+    // A refresh keeps "Abrindo no Mac..." / the result while the same meeting is up.
+    const bool same = meeting_active && strcmp(meeting_where, where) == 0;
+    if (!same) {
+        strlcpy(meeting_where, where, sizeof(meeting_where));
+        lv_label_set_text(lbl_meeting_where, where);
+        lv_obj_clear_state(btn_meeting_join, LV_STATE_DISABLED);
+    }
+    if (joinable) lv_obj_clear_flag(btn_meeting_join, LV_OBJ_FLAG_HIDDEN);
+    else          lv_obj_add_flag(btn_meeting_join, LV_OBJ_FLAG_HIDDEN);
     render_meeting_count();
     if (!meeting_active) {
         meeting_active = true;
@@ -1685,7 +1718,7 @@ static void meeting_tick(void) {
     if (!meeting_active) return;
     const uint32_t now = lv_tick_get();
     if ((int32_t)(now - meeting_start_ms) > MEETING_GRACE_MS || now - meeting_rx_ms > MEETING_STALE_MS) {
-        ui_update_meeting(nullptr, "", 0, "");
+        ui_update_meeting(nullptr, "", 0, "", false);
         return;
     }
     render_meeting_count();

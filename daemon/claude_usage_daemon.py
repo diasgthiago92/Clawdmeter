@@ -636,6 +636,8 @@ class Session:
                 return
             if isinstance(command.get("rr"), str):
                 asyncio.get_running_loop().create_task(self._rerun_routine(command["rr"]))
+            elif command.get("mg") == 1:
+                asyncio.get_running_loop().create_task(self._join_meeting())
             return
         log("Refresh requested by device")
         self.refresh_requested.set()
@@ -645,6 +647,16 @@ class Session:
         log(f"Rerun requested by device: {name!r} -> {'started' if ok else 'refused/failed'}")
         await self.write_payload({"rrk": [name[:30], int(ok)]})
         _ROUTINES.fetched_at = 0.0      # pick up the routine's Slack post on the next cycle
+
+    async def _join_meeting(self) -> None:
+        """"Começar" on the meeting alert: open the alert meeting's own link on this Mac."""
+        link = _AGENDA.alert_link(time.time())
+        ok = False
+        if link:
+            proc = await asyncio.create_subprocess_exec("/usr/bin/open", link)
+            ok = await proc.wait() == 0
+        log(f"Meeting join requested by device: {link or 'no link'} -> {'opened' if ok else 'failed'}")
+        await self.write_payload({"mgk": int(ok)})
 
     async def setup_refresh_subscription(self) -> None:
         # start_notify awaits CoreBluetooth's CCCD-write confirmation, which

@@ -21,7 +21,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
 Clawd (tela inicial) → **Consumo Atual** (painéis Claude Daily, Gemini Daily, Kiro Monthly, Claude Weekly) →
 **Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Últimas Ações** (últimas ações de Claude, Kiro e Gemini) → **Rotinas Automáticas** →
 **Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
-Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem), **Rotina falhou** (vermelha, botão
+Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; botão "Começar" abre o link Meet/Zoom/Teams no Mac via `{"mg":1}`), **Rotina falhou** (vermelha, botão
 "Rodar de novo"), **Vasco ao vivo**.
 
 ## Fontes de dados (daemon/)

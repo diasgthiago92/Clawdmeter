@@ -55,3 +55,28 @@ def test_build_alert_next_meeting_within_five_minutes():
     later = datetime.datetime(2026, 9, 14, 9, 30, 30, tzinfo=tz)
     assert build_alert(events, later)["mt"][0] == "Planejamento"   # grace minute after the start
     assert build_alert(events, datetime.datetime(2026, 9, 14, 11, 0, tzinfo=tz)) == {"mt": 0}
+
+
+def test_alert_marks_joinable_meetings():
+    from daemon.google_agenda import build_alert
+
+    tz = datetime.timezone(datetime.timedelta(hours=-3))
+    now = datetime.datetime(2026, 9, 14, 9, 27, tzinfo=tz)
+    meet = [_ev("Daily", "2026-09-14T09:30:00-03:00", "2026-09-14T10:00:00-03:00",
+                hangoutLink="https://meet.google.com/abc-defg-hij")]
+    room = [_ev("Review", "2026-09-14T09:30:00-03:00", "2026-09-14T10:00:00-03:00", location="Sala Rio 3")]
+    assert build_alert(meet, now)["mt"][4] == 1
+    assert build_alert(room, now)["mt"][4] == 0
+
+
+def test_meeting_link_only_trusts_known_https_hosts():
+    from daemon.google_agenda import meeting_link
+
+    assert meeting_link({"hangoutLink": "https://meet.google.com/abc"}) == "https://meet.google.com/abc"
+    assert meeting_link({"conferenceData": {"entryPoints": [
+        {"entryPointType": "phone", "uri": "tel:+551100"},
+        {"entryPointType": "video", "uri": "https://olx.zoom.us/j/123"}]}}) == "https://olx.zoom.us/j/123"
+    assert meeting_link({"location": "Sala 3 https://teams.microsoft.com/l/meetup"}) == "https://teams.microsoft.com/l/meetup"
+    assert meeting_link({"location": "https://evil.example/meet.google.com"}) is None
+    assert meeting_link({"location": "http://meet.google.com/abc"}) is None
+    assert meeting_link({"location": "Sala Rio 3"}) is None
