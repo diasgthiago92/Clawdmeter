@@ -671,7 +671,7 @@ static lv_obj_t* lbl_history_now_unit;   // "tokens do Claude", under the Claude
 static lv_obj_t* lbl_history_peak_unit;  // "requisições do Kiro", under the Kiro number
 static lv_obj_t* lbl_history_empty;
 
-// Últimas Ações: a header per AI followed by its newest tool calls.
+// Últimas Ações: a header per AI followed by its latest git commits.
 static lv_obj_t* actions_container;
 static lv_obj_t* lbl_actions_empty;
 #define ACTION_LIST_ROWS (ACTIONS_MAX + 3)   // actions + one header per AI
@@ -1033,10 +1033,10 @@ static void init_actions_screen(lv_obj_t* scr) {
     if (!actions) actions = (ActionRow*)malloc(actions_size);   // boards without PSRAM
     if (actions) memset(actions, 0, actions_size);
 
-    lbl_actions_empty = make_dim_label(panel, L.reset_font, "Buscando ações...");
+    lbl_actions_empty = make_dim_label(panel, L.reset_font, "Buscando commits...");
     lv_obj_align(lbl_actions_empty, LV_ALIGN_CENTER, 0, 0);
 
-    lv_obj_t* note = make_dim_label(panel, L.axis_font, "Últimas 24h \xC2\xB7 neste Mac");
+    lv_obj_t* note = make_dim_label(panel, L.axis_font, "Últimos commits \xC2\xB7 neste Mac");
     lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 }
 
@@ -2013,7 +2013,7 @@ static void render_actions(void) {
         lv_obj_add_flag(action_text[i], LV_OBJ_FLAG_HIDDEN);
     }
     actions_list.rows = row;
-    lv_label_set_text(lbl_actions_empty, "Nenhuma ação registrada");
+    lv_label_set_text(lbl_actions_empty, "Nenhum commit registrado");
     if (row > 0) lv_obj_add_flag(lbl_actions_empty, LV_OBJ_FLAG_HIDDEN);
     else         lv_obj_clear_flag(lbl_actions_empty, LV_OBJ_FLAG_HIDDEN);
 }

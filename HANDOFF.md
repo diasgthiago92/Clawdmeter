@@ -29,9 +29,9 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
   em `~/.gemini/antigravity-cli/conversations`, formato reverso-engenheirado).
 - Kiro: créditos do mês nos logs do Kiro IDE (real); 24h/5h = requisições do kiro-cli × crédito médio (estimado)
   (`kiro_usage.py`). Rotinas: Slack #leo-dias-news (`kiro_routines.py`, rerun só via lista fixa + launchctl).
-- Últimas Ações (`ai_actions.py`, payload `{"a": [[ia, "HH:MM", texto]], "o", "n"}`): tool_use dos transcripts do
-  Claude, `__tool_use_purpose` das sessões do kiro-cli (hora = prompt do turno) e `toolAction` dos passos do
-  Antigravity. Até 6 por IA, últimas 24h. Substituiu a antiga tela Modelos (15/09/2026).
+- Últimas Ações (`ai_actions.py`, payload `{"a": [[ia, "HH:MM" ou "dd/mm", assunto]], "o", "n"}`): últimos commits de cada IA, sem limite de tempo. Vêm do `git commit` que a IA rodou (repo pelo `cd`/`-C`, commit confirmado no `git log`) ou da linha `[branch sha] assunto` + `N files changed` na saída das ferramentas (pega scripts como o backup do Kiro). Fontes: tool_use dos transcripts do
+  Claude, sessões do kiro-cli (hora = prompt do turno) e `run_command` dos passos do
+  Antigravity. Até 6 por IA. Substituiu a antiga tela Modelos (15/09/2026).
 - Agenda: Google Calendar read-only (`google_agenda.py`, login em `google_calendar_login.py`).
 - Cotações: CoinGecko, Yahoo, Fundamentus (`market_quotes.py`). Vasco: ESPN (`team_fixtures.py`).
 - Fantasias do dia (`costumes.py`): Vasco em dia de jogo > Natal > Carnaval > Halloween.

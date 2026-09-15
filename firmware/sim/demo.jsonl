@@ -3,10 +3,6 @@
 {"name":"kiro","hold_ms":40,"k":[36,18]}
 {"name":"gemini","hold_ms":40,"ag":[914548,48,12]}
 {"name":"consumo 24h","hold_ms":40,"hb":["AAAAAAFAAJh5wAAAAAAATXnX","AAAAAAOrTAAAAAc5mAAAAJYA","AAAAAAAALgAAAAAAAY5AAAAE"],"tc":139909602,"tk":49,"ta":474548}
-{"name":"acoes","hold_ms":40,"a":[[0,"09:17","Rodar o coletor de ações com dados reais"],[0,"09:16","Editou ui.cpp"],[0,"09:12","Buscou SCREEN_MODELS"]],"o":0,"n":9}
-{"name":"acoes1","hold_ms":40,"a":[[0,"09:05","Leu HANDOFF.md"],[1,"13:27","Atualizar as 12 issues existentes para [iOS]"]],"o":3,"n":9}
-{"name":"acoes2","hold_ms":40,"a":[[1,"13:25","Criar a primeira história (Passo 1) com todos os campos"],[1,"13:20","Localizar a Sprint 34 no board 1358"]],"o":5,"n":9}
-{"name":"acoes3","hold_ms":40,"a":[[2,"19:14","Viewing GEMINI.md file"],[2,"19:13","Listing .gemini directory"]],"o":7,"n":9}
 {"name":"agenda","hold_ms":30,"g":[["Dia","","Aniversário da Ana",1],["09:00","09:15","Daily VAS",0]],"o":0,"n":9}
 {"name":"agenda","hold_ms":30,"g":[["10:00","11:00","Planejamento Sprint",1],["11:30","12:00","1:1 com gestora",2]],"o":2,"n":9}
 {"name":"agenda","hold_ms":30,"g":[["14:00","15:00","Review Financiamento",2],["15:30","16:00","Alinhamento Kiro",2]],"o":4,"n":9}
@@ -42,6 +38,10 @@
 {"name":"fiis","hold_ms":30,"f":[["JSRE11","JS RE","60,19","0,59",-0.5],["PVBI11","VBI Prime","68,90","0,66",0.3],["KNSC11","Kinea Sec","8,96","1,03",-0.2]],"o":21,"n":30}
 {"name":"fiis","hold_ms":30,"f":[["MCCI11","Mauá","94,65","1,01",-0.1],["HFOF11","Hedge FoF","6,27","0,82",-0.5],["GGRC11","GGR","8,99","0,81",-0.1]],"o":24,"n":30}
 {"name":"fiis","hold_ms":30,"f":[["ALZR11","Alianza","10,00","0,93",0.2],["LVBI11","VBI Log","97,73","0,81",0.0],["KNHY11","Kinea HY","94,13","0,96",-0.6]],"o":27,"n":30}
+{"name":"acoes","hold_ms":40,"a":[[0,"10:33","Botão Começar na tela de reunião abre o M..."],[0,"10:26","Renomeia a tela para Jogos do Vasco"]],"o":0,"n":8}
+{"name":"acoes","hold_ms":40,"a":[[0,"10:19","Renomeia a tela para Consumo Atual"],[0,"09:55","Títulos em Tiempos 34 numa linha e bateri..."]],"o":2,"n":8}
+{"name":"acoes","hold_ms":40,"a":[[1,"11/09","backup: 2026-09-11 16:22"],[1,"11/09","backup: 2026-09-11 16:15"]],"o":4,"n":8}
+{"name":"acoes","hold_ms":40,"a":[[1,"27/08","Setup self-service de MCPs do Kiro para PMs"],[2,"","Nenhum commit encontrado"]],"o":6,"n":8}
 {"name":"jogos","hold_ms":30,"v":[["Santa Fe","C","Ter 15/09 19:00","Sul-Americana"],["Coritiba","C","Sáb 19/09 20:30","Brasileirão"]],"o":0,"n":10}
 {"name":"jogos","hold_ms":30,"v":[["Botafogo","F","Qua 07/10 20:30","Brasileirão"],["Remo","C","Sáb 10/10 17:00","Brasileirão"]],"o":2,"n":10}
 {"name":"jogos","hold_ms":30,"v":[["São Paulo","F","Sáb 17/10","Brasileirão"],["Corinthians","C","Sáb 24/10","Brasileirão"]],"o":4,"n":10}
