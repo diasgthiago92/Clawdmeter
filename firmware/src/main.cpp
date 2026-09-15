@@ -202,6 +202,10 @@ static bool handle_extra_json(const char* json) {
         splash_set_costume(doc["cos"] | 0);
         return true;
     }
+    if (!doc["alm"].isNull()) {              // Almirante mascot: 1 from 3 h before a Vasco kickoff
+        splash_set_almirante((doc["alm"] | 0) != 0);
+        return true;
+    }
     if (doc["ag"].is<JsonArray>()) {          // Antigravity today: [tokens, % of busiest day, responses]
         ui_update_antigravity(doc["ag"][0] | (uint64_t)0, doc["ag"][1] | 0, doc["ag"][2] | 0);
         return true;
