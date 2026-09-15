@@ -1,4 +1,4 @@
-# Passagem de contexto — Clawdmeter (atualizado em 14/09/2026)
+# Passagem de contexto — Clawdmeter (atualizado em 15/09/2026)
 
 Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre). Responder em português.
 
@@ -9,7 +9,8 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
   `pio run -d firmware -e guition_4848s040 -t upload --upload-port $(ls /dev/cu.usbserial-* | head -1)`
 - Serial: abrir a porta **reinicia a placa**. Comandos: `screen <nome>` (usage, agenda, history, actions, routines,
   crypto, stocks, fiis, vasco) e `screenshot` (RGB565 **little-endian**, ~40 s). O palco da tela inicial é desenhado
-  direto no painel e não aparece no screenshot. Imagens do README em `docs/meu-clawdmeter/` (placa = captura real). BLE sobe antes da tela (evita boot loop por falta de memória).
+  direto no painel e não aparece no screenshot. Imagens do README em `docs/meu-clawdmeter/` (placa = captura real).
+- BLE sobe antes da tela (evita boot loop por falta de memória).
 - LVGL: pool interno 96 KB + 256 KB na PSRAM (`LV_MEM_POOL_EXPAND_SIZE`). Sem memória, `lv_obj_create`
   trava num assert em laço infinito.
 
@@ -21,7 +22,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
 
 ## Telas (ordem de toque: direita avança, esquerda volta)
 Clawd (tela inicial) → **Consumo Atual** (painéis Claude Daily, Gemini Daily, Kiro Monthly, Claude Weekly) →
-**Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Últimas Ações** (últimas ações de Claude, Kiro e Gemini) → **Rotinas Automáticas** →
+**Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Últimas Ações** (últimos commits de Claude, Kiro e Gemini) → **Rotinas Automáticas** →
 **Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
 Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; botão "Começar" abre o link Meet/Zoom/Teams no Mac via `{"mg":1}`), **Rotina falhou** (vermelha, botão
 "Rodar de novo"), **Vasco ao vivo**.
