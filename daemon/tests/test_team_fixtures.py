@@ -101,13 +101,13 @@ def test_is_match_day_uses_local_calendar_day():
     assert not is_match_day({}, datetime.datetime(2026, 9, 15, 12, 0, tzinfo=tz))
 
 
-def test_almirante_window_starts_three_hours_before_kickoff():
+def test_almirante_window_starts_two_hours_before_kickoff():
     from daemon.team_fixtures import almirante_window
 
     tz = datetime.timezone(datetime.timedelta(hours=-3))
     events = {"1": ("conmebol.sudamericana", datetime.datetime(2026, 9, 15, 19, 0, tzinfo=tz))}
-    assert not almirante_window(events, datetime.datetime(2026, 9, 15, 15, 59, tzinfo=tz))
-    assert almirante_window(events, datetime.datetime(2026, 9, 15, 16, 0, tzinfo=tz))
+    assert not almirante_window(events, datetime.datetime(2026, 9, 15, 16, 59, tzinfo=tz))
+    assert almirante_window(events, datetime.datetime(2026, 9, 15, 17, 0, tzinfo=tz))
     assert almirante_window(events, datetime.datetime(2026, 9, 15, 23, 50, tzinfo=tz))
     assert not almirante_window(events, datetime.datetime(2026, 9, 16, 0, 10, tzinfo=tz))
     late = {"2": ("bra.1", datetime.datetime(2026, 9, 15, 23, 30, tzinfo=tz))}

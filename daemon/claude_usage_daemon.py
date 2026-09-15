@@ -753,7 +753,8 @@ class Session:
         # Santa / passista / witch on Christmas, Carnaval and Halloween.
         utc_now = datetime.datetime.now(datetime.timezone.utc)
         extras.append({"cos": costume_for(utc_now.astimezone().date(), is_match_day(_FIXTURES.events, utc_now))})
-        # The Almirante (Vasco mascot) joins the mascots from 3 hours before kickoff.
+        # The Almirante (Vasco mascot) joins the mascots from 2 hours before kickoff;
+        # the Vasco shirt above lasts the whole match day.
         extras.append({"alm": int(almirante_window(_FIXTURES.events, utc_now))})
         for extra in extras:
             await asyncio.sleep(EXTRA_WRITE_GAP_S)

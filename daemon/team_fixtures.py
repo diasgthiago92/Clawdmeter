@@ -200,12 +200,13 @@ class LiveMatch:
         return {"l": 0}
 
 
-ALMIRANTE_LEAD_S = 3 * 3600
+ALMIRANTE_LEAD_S = 2 * 3600
 
 
 def almirante_window(events: dict[str, tuple[str, datetime.datetime]], now: datetime.datetime) -> bool:
-    """True from 3 hours before a kickoff until the end of that day (or 3 hours after
-    kickoff, for a late game running past midnight): when the Almirante mascot shows."""
+    """True from 2 hours before a kickoff until the end of that day (or 2 hours after
+    kickoff, for a late game running past midnight): when the Almirante mascot shows.
+    The Vasco shirt on Clawd and Kiro is separate and lasts the whole match day."""
     for _, start in events.values():
         local = start.astimezone()
         day_end = datetime.datetime.combine(local.date() + datetime.timedelta(days=1),
