@@ -1,6 +1,7 @@
 #include "splash.h"
 #include "splash_animations.h"
 #include "kiro_ghost.h"
+#include "almirante.h"
 #include "splash_geometry.h"
 #include "theme.h"
 #include "usage_rate.h"
@@ -594,7 +595,7 @@ static int  mas_lurk_cell = 8;
 static int  mas_screen_w = 480;
 static bool mas_visible = false;
 
-enum MasMode { MAS_STILL, MAS_ACT, MAS_WALK_OFF, MAS_LURK, MAS_WALK_IN, MAS_KIRO };
+enum MasMode { MAS_STILL, MAS_ACT, MAS_WALK_OFF, MAS_LURK, MAS_WALK_IN, MAS_KIRO, MAS_ALMIRANTE };
 // The corner slot alternates Clawd with the Kiro ghost. Turns only hand over
 // while Clawd is idle, so an act or lurk trip always finishes first.
 #ifndef MAS_CLAWD_TURN_MS
@@ -602,6 +603,11 @@ enum MasMode { MAS_STILL, MAS_ACT, MAS_WALK_OFF, MAS_LURK, MAS_WALK_IN, MAS_KIRO
 #endif
 #ifndef MAS_KIRO_TURN_MS
 #define MAS_KIRO_TURN_MS  25000
+#endif
+// On Vasco match days the Almirante takes a turn after the ghost, standing in
+// the slot with his own animation (fist pump, blink, breathing).
+#ifndef MAS_ALMIRANTE_TURN_MS
+#define MAS_ALMIRANTE_TURN_MS 20000
 #endif
 static uint32_t mas_turn_started = 0;
 // Ghost trip inside its turn: float in the slot, drift off left, peek in big
@@ -745,6 +751,40 @@ static void mas_start_kiro(uint32_t now) {
     mas_render(mas_anim, 0, false, &mas_dsc, mas_buf, mas_img, mas_cell, mas_x, mas_feet_y);
 }
 
+// The Almirante is drawn finer than Clawd (2 px cells on the large layout) so
+// his face and hat read at the corner size; same feet line, centered on the slot.
+static int alm_cell(void) { return mas_cell > 2 ? mas_cell - 1 : 1; }
+static int alm_slot_x(void) {
+    const splash_anim_def_t *still = anim_by_name("walking");
+    const int still_w = still ? still->w * mas_cell : 0;
+    return mas_slot_x + (still_w - almirante_anim.w * alm_cell()) / 2;
+}
+static void mas_render_almirante(void) {
+    mas_render(&almirante_anim, mas_frame, false, &mas_dsc, mas_buf, mas_img,
+               alm_cell(), mas_x, mas_feet_y);
+}
+static void mas_start_almirante(uint32_t now) {
+    mas_anim = &almirante_anim;
+    mas_frame = 0;
+    mas_frame_started = now;
+    mas_face = +1;
+    mas_x = alm_slot_x();
+    mas_mode = MAS_ALMIRANTE;
+    mas_turn_started = now;
+    mas_render_almirante();
+}
+static void mas_almirante_tick(uint32_t now) {
+    if (now - mas_turn_started >= MAS_ALMIRANTE_TURN_MS || costume != SPLASH_COSTUME_VASCO) {
+        mas_show_still();                       // back to Clawd
+        mas_turn_started = now;
+        return;
+    }
+    if (now - mas_frame_started < almirante_anim.holds[mas_frame]) return;
+    mas_frame = (mas_frame + 1) % almirante_anim.frame_count;
+    mas_frame_started = now;
+    mas_render_almirante();
+}
+
 static const int KP_BIG_FEET_Y_DIV = 2;   // big ghost centered vertically
 static void kp_draw_big(int x) {
     const splash_anim_def_t *a = mas_anim;
@@ -814,6 +854,10 @@ static void mas_kiro_tick(uint32_t now) {
         break;
     case KP_REST:
         if (now - mas_turn_started >= MAS_KIRO_TURN_MS) {
+            if (costume == SPLASH_COSTUME_VASCO) {   // match day: the Almirante is next
+                mas_start_almirante(now);
+                return;
+            }
             mas_show_still();                   // hand the slot back to Clawd
             mas_turn_started = now;
             return;
@@ -832,6 +876,12 @@ void splash_mascot_set_visible(bool v) {
         // siblings (battery icon, labels) whenever he's shown.
         lv_obj_move_foreground(mas_img);
         if (mas_lurk_img) lv_obj_move_foreground(mas_lurk_img);
+        if (mas_mode == MAS_ALMIRANTE) {        // screen change mid-turn: keep him in the slot
+            if (mas_lurk_img) lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
+            mas_x = alm_slot_x();
+            mas_render_almirante();
+            return;
+        }
         if (mas_mode == MAS_KIRO) {             // screen change mid-turn: keep the ghost, in the slot
             if (mas_lurk_img) lv_obj_add_flag(mas_lurk_img, LV_OBJ_FLAG_HIDDEN);
             if (kp != KP_FLOAT && kp != KP_REST) kp = KP_REST;
@@ -851,6 +901,7 @@ void splash_mascot_tick(void) {
     if (!mas_img || !mas_visible || !mas_anim) return;
     const uint32_t now = millis();
     if (mas_mode == MAS_KIRO) { mas_kiro_tick(now); return; }
+    if (mas_mode == MAS_ALMIRANTE) { mas_almirante_tick(now); return; }
 
     if (mas_mode == MAS_STILL) {
         if (now - mas_turn_started >= MAS_CLAWD_TURN_MS) {
@@ -1061,6 +1112,8 @@ void splash_init(lv_obj_t *parent) {
 #define KIRO_GLIDE_MS_PER_CELL 45
 static bool     kiro_on = false;          // the ghost owns the splash stage
 static bool     kiro_next = false;        // next rotation goes to the ghost
+static bool     alm_on = false;           // the stage guest is the Almirante (match days)
+static bool     alm_next = false;         // he follows the ghost's turn
 static int      kiro_x = 0, kiro_home_x = 0, kiro_target = 0;
 static int      kiro_face = +1;
 static uint8_t  kiro_phase = 0;
@@ -1087,10 +1140,11 @@ static const uint8_t* compose_kiro(void) {
     return stage_cells;
 }
 
-static void kiro_splash_start(void) {
+static void kiro_splash_start(bool almirante = false) {
     kiro_on = true;
-    kiro_anim = kiro_outfit();                // the day's costume (plain on ordinary days)
-    kiro_home_x = (GRID - kiro_ghost_anim.w) / 2;
+    alm_on = almirante;
+    kiro_anim = almirante ? &almirante_anim : kiro_outfit();   // ghost wears the day's costume
+    kiro_home_x = (GRID - kiro_anim->w) / 2;
     kiro_x = kiro_target = kiro_home_x;
     kiro_face = +1;
     kiro_phase = 0;
@@ -1100,15 +1154,23 @@ static void kiro_splash_start(void) {
     render_frame(compose_kiro(), kiro_anim->palette);
 }
 
-// Next rotation step: alternate Clawd picks with ghost turns.
+// Next rotation step: Clawd pick → ghost turn → Almirante (Vasco match days) → Clawd.
 static void splash_rotate(void) {
     if (kiro_next) {
         kiro_next = false;
+        alm_next = costume == SPLASH_COSTUME_VASCO;
         kiro_splash_start();
         return;
     }
+    if (alm_next && costume == SPLASH_COSTUME_VASCO) {
+        alm_next = false;
+        kiro_splash_start(true);
+        return;
+    }
+    alm_next = false;
     kiro_next = true;
     kiro_on = false;
+    alm_on = false;
     splash_pick_for_current_rate();
 }
 
@@ -1126,7 +1188,9 @@ static void kiro_splash_tick(uint32_t now) {
         kiro_step_ms = now;
         dirty = true;
     }
-    if (arrived) {
+    if (arrived && alm_on) {                  // the Almirante stays home and animates in place
+        if (now - last_pick_ms >= SPLASH_ROTATE_INTERVAL_MS) { splash_rotate(); return; }
+    } else if (arrived) {
         const uint32_t held = now - kiro_phase_ms;
         auto glide = [&](int target, uint8_t next) {
             kiro_target = target;
@@ -1235,6 +1299,7 @@ void splash_tick(void) {
 void splash_next(void) {
     if (SPLASH_ANIM_COUNT == 0) return;
     kiro_on = false;
+    alm_on = false;
     cur_anim = (cur_anim + 1) % SPLASH_ANIM_COUNT;
     cur_frame = 0;
     frame_started_ms = millis();
@@ -1329,7 +1394,7 @@ void splash_set_costume(int c) {
 #else
         const splash_anim_def_t *a = &splash_anims[cur_anim];
         if (kiro_on) {
-            kiro_anim = kiro_outfit();
+            kiro_anim = alm_on ? &almirante_anim : kiro_outfit();
             render_frame(compose_kiro(), kiro_anim->palette);
         } else if (a->frame_count) {
             render_frame(compose_stage(a, cur_frame), a->palette);
@@ -1337,6 +1402,7 @@ void splash_set_costume(int c) {
 #endif
     }
     if (mas_img && mas_anim) {
+        if (mas_mode == MAS_ALMIRANTE && c != SPLASH_COSTUME_VASCO) mas_show_still();   // no match: no Almirante
         if (mas_mode == MAS_KIRO) mas_anim = kiro_outfit();
         if (mas_mode == MAS_STILL || mas_mode == MAS_KIRO)
             mas_render(mas_anim, mas_frame, mas_face < 0, &mas_dsc, mas_buf, mas_img, mas_cell, mas_x, mas_feet_y);
@@ -1345,12 +1411,14 @@ void splash_set_costume(int c) {
 }
 
 bool splash_kiro_on_screen(void) {
-    if (active) return kiro_on;
+    if (active) return kiro_on && !alm_on;
     return mas_img && mas_visible && mas_mode == MAS_KIRO;
 }
 
 void splash_show(void) {
     kiro_on = false;
+    alm_on = false;
+    alm_next = false;
     kiro_next = true;                 // Clawd opens; the ghost gets the next turn
     splash_pick_for_current_rate();   // select animation; direct path defers the draw
     if (splash_container) lv_obj_clear_flag(splash_container, LV_OBJ_FLAG_HIDDEN);
