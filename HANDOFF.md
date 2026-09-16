@@ -21,7 +21,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
   `daemon/tests/test_*.py` (menos os de Windows/Linux).
 
 ## Telas (ordem de toque: direita avança, esquerda volta)
-Clawd (tela inicial) → **Consumo Atual** (painéis Claude Daily, Gemini Daily, Kiro Monthly, Claude Weekly) →
+Clawd (tela inicial) → **Consumo Atual** (painéis Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily, Gemini Daily) →
 **Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Últimas Ações** (últimos commits de Claude, Kiro e Gemini) → **Rotinas Automáticas** →
 **Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
 Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; botão "Começar" abre o link Meet/Zoom/Teams no Mac via `{"mg":1}`), **Rotina falhou** (vermelha, botão

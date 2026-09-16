@@ -27,6 +27,7 @@ from bleak.exc import BleakError
 
 from ai_actions import AiActions
 from market_quotes import CryptoQuotes, FiiQuotes, StockQuotes
+from antigravity_quota import AntigravityQuota
 from antigravity_usage import AntigravityUsage
 from costumes import costume_for
 from google_agenda import GoogleAgenda
@@ -565,6 +566,7 @@ _PERIPHERALS = PeripheralBattery(DEVICE_NAME)
 _KIRO_ACTIVITY = KiroActivity()
 _ROUTINES = KiroRoutines()
 _ANTIGRAVITY = AntigravityUsage()
+_AG_QUOTA = AntigravityQuota()
 _AGENDA = GoogleAgenda()
 EXTRA_WRITE_GAP_S = 0.4
 
@@ -713,13 +715,15 @@ class Session:
             log(f"Kiro activity unavailable: {e}")
         ag_hourly, ag_window = [0] * STACK_HOURS, 0
         try:
-            # Antigravity CLI: tokens per hour, in the 5h window, and today's panel.
+            # Antigravity CLI: tokens per hour, in the 5h window, and the Gemini - Daily panel.
             ag_hourly = _ANTIGRAVITY.hourly(now, STACK_HOURS)
             ag_window = _ANTIGRAVITY.since(since)
             ag_today, ag_responses, ag_peak = _ANTIGRAVITY.today(now)
             extras.append({"ag": [ag_today, min(100, round(ag_today * 100 / ag_peak)) if ag_peak else 0, ag_responses]})
         except OSError as e:
             log(f"Antigravity usage unavailable: {e}")
+        # Gemini - Weekly panel: weekly quota of the Gemini models group (agy /quota).
+        extras.append(await _AG_QUOTA.get(now))
         try:
             config_dirs = read_config_dirs()
             claude_hourly = _MODEL_TALLY.hourly(config_dirs, now)

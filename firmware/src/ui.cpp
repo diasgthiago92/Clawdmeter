@@ -541,11 +541,16 @@ static void build_idle_group(lv_obj_t* parent) {
 }
 
 static lv_obj_t* make_usage_scroll_box(lv_obj_t* parent, int y, int w, int visible_rows, int row_h);
-static lv_obj_t* panel_ag = nullptr;      // Antigravity - Daily (large layout)
+static lv_obj_t* panel_ag = nullptr;      // Gemini - Weekly (large layout)
 static lv_obj_t* lbl_ag_pct;
 static lv_obj_t* lbl_ag_label;
 static lv_obj_t* bar_ag;
 static lv_obj_t* lbl_ag_reset;
+static lv_obj_t* panel_ag_day = nullptr;  // Gemini - Daily (large layout)
+static lv_obj_t* lbl_ag_day_pct;
+static lv_obj_t* lbl_ag_day_label;
+static lv_obj_t* bar_ag_day;
+static lv_obj_t* lbl_ag_day_reset;
 
 static void init_usage_screen(lv_obj_t* scr) {
     usage_container = lv_obj_create(scr);
@@ -573,16 +578,18 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_clear_flag(usage_group, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(usage_group, LV_OBJ_FLAG_EVENT_BUBBLE);
 
-    // Large layout: Claude Daily, Antigravity, Kiro Monthly and Claude Weekly
-    // share a scrollable box (three visible at a time).
+    // Large layout: Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily and
+    // Gemini Daily share a scrollable box (three visible at a time).
     lv_obj_t* panels = usage_group;
     int py0 = L.content_y;
+    const int row = L.usage_panel_h + L.usage_panel_gap;
     if (L.kiro_panel) {
         panels = make_usage_scroll_box(usage_group, L.content_y, L.scr_w, 3, L.usage_panel_h + L.usage_panel_gap);
         py0 = 0;
     }
 
-    panel_session = make_usage_panel(panels, py0, "Claude - Daily",
+    // Small layouts only fit two panels: Claude Daily on top, Weekly below.
+    panel_session = make_usage_panel(panels, L.kiro_panel ? py0 + 3 * row : py0, "Claude - Daily",
                      &lbl_session_pct, &lbl_session_label,
                      &bar_session, &lbl_session_reset);
 
@@ -607,7 +614,7 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_add_flag(lbl_spending_status, LV_OBJ_FLAG_HIDDEN);
 
     panel_weekly = make_usage_panel(panels,
-                     py0 + 3 * (L.usage_panel_h + L.usage_panel_gap), "Claude - Weekly",
+                     L.kiro_panel ? py0 : py0 + row, "Claude - Weekly",
                      &lbl_weekly_pct, &lbl_weekly_label,
                      &bar_weekly, &lbl_weekly_reset);
     // Recolor enabled so enterprise period box can color pace and reset separately
@@ -615,14 +622,18 @@ static void init_usage_screen(lv_obj_t* scr) {
 
     if (L.kiro_panel) {
         panel_kiro = make_usage_panel(panels,
-                         py0 + 2 * (L.usage_panel_h + L.usage_panel_gap), "Kiro - Monthly",
+                         py0 + row, "Kiro - Monthly",
                          &lbl_kiro_pct, &lbl_kiro_label, &bar_kiro, &lbl_kiro_reset);
         lv_label_set_text(lbl_kiro_reset, "Sem dados do Kiro");
         panel_ag = make_usage_panel(panels,
-                         py0 + L.usage_panel_h + L.usage_panel_gap, "Gemini - Daily",
+                         py0 + 2 * row, "Gemini - Weekly",
                          &lbl_ag_pct, &lbl_ag_label, &bar_ag, &lbl_ag_reset);
         lv_label_set_text(lbl_ag_pct, "---%");
-        lv_label_set_text(lbl_ag_reset, "Sem uso do Gemini hoje");
+        lv_label_set_text(lbl_ag_reset, "Sem dados do Gemini");
+        panel_ag_day = make_usage_panel(panels, py0 + 4 * row, "Gemini - Daily",
+                         &lbl_ag_day_pct, &lbl_ag_day_label, &bar_ag_day, &lbl_ag_day_reset);
+        lv_label_set_text(lbl_ag_day_pct, "---%");
+        lv_label_set_text(lbl_ag_day_reset, "Sem uso do Gemini hoje");
     }
 
     // Brand colors: the number and bar in the tool's primary color, text in white.
@@ -636,6 +647,9 @@ static void init_usage_screen(lv_obj_t* scr) {
         lv_obj_set_style_text_color(lbl_ag_pct, COL_AG, 0);
         lv_obj_set_style_text_color(lbl_ag_reset, COL_TEXT, 0);
         lv_obj_set_style_bg_color(bar_ag, COL_AG, LV_PART_INDICATOR);
+        lv_obj_set_style_text_color(lbl_ag_day_pct, COL_AG, 0);
+        lv_obj_set_style_text_color(lbl_ag_day_reset, COL_TEXT, 0);
+        lv_obj_set_style_bg_color(bar_ag_day, COL_AG, LV_PART_INDICATOR);
     }
     if (panel_kiro) {
         lv_obj_set_style_text_color(lbl_kiro_pct, COL_KIRO, 0);
@@ -975,23 +989,40 @@ static ScrollList usage_list;
 
 static lv_obj_t* make_usage_scroll_box(lv_obj_t* parent, int y, int w, int visible_rows, int row_h) {
     lv_obj_t* box = scroll_list_create(&usage_list, parent, 0, y, w, visible_rows, row_h);
-    usage_list.rows = 4;
+    usage_list.rows = 5;
     return box;
 }
 
-void ui_update_antigravity(uint64_t tokens_today, int pct_of_peak, int responses) {
+void ui_update_antigravity(int used_pct, int reset_mins) {
     if (!panel_ag) return;
-    // Like the other panels: the big number is a percentage (today vs. the
-    // busiest day of the last 30), the token count goes in the line below.
+    // Like Claude - Weekly: the big number is the share of the weekly limit
+    // already used (Antigravity reports what remains), reset time below.
+    if (used_pct < 0) {
+        lv_label_set_text(lbl_ag_pct, "---%");
+        lv_bar_set_value(bar_ag, 0, LV_ANIM_ON);
+        lv_label_set_text(lbl_ag_reset, "Sem dados do Gemini");
+        return;
+    }
     char buf[48];
-    lv_label_set_text_fmt(lbl_ag_pct, "%d%%", pct_of_peak);
-    lv_bar_set_value(bar_ag, pct_of_peak, LV_ANIM_ON);
+    lv_label_set_text_fmt(lbl_ag_pct, "%d%%", used_pct);
+    lv_bar_set_value(bar_ag, used_pct, LV_ANIM_ON);
+    format_reset_time(reset_mins, buf, sizeof(buf));
+    lv_label_set_text(lbl_ag_reset, buf);
+}
+
+void ui_update_antigravity_daily(uint64_t tokens_today, int pct_of_peak, int responses) {
+    if (!panel_ag_day) return;
+    // No daily quota exists: the big number is today vs. the busiest day of
+    // the last 30, the token count goes in the line below.
+    char buf[48];
+    lv_label_set_text_fmt(lbl_ag_day_pct, "%d%%", pct_of_peak);
+    lv_bar_set_value(bar_ag_day, pct_of_peak, LV_ANIM_ON);
     if (responses <= 0) {
-        lv_label_set_text(lbl_ag_reset, "Sem uso do Gemini hoje");
+        lv_label_set_text(lbl_ag_day_reset, "Sem uso do Gemini hoje");
         return;
     }
     format_tokens(tokens_today, buf, sizeof(buf));
-    lv_label_set_text_fmt(lbl_ag_reset, "%s tokens hoje \xC2\xB7 %d %s",
+    lv_label_set_text_fmt(lbl_ag_day_reset, "%s tokens hoje \xC2\xB7 %d %s",
                           buf, responses, responses == 1 ? "resposta" : "respostas");
 }
 
