@@ -574,6 +574,14 @@ static void sort_usage_panels(void) {
     }
 }
 
+// Panels are sorted highest first, so the ones below the three visible rows
+// have some usage only when more than three panels are above 0%.
+static bool usage_hidden_in_use(void) {
+    int in_use = 0;
+    for (int i = 0; i < UP_COUNT; i++) in_use += usage_pct[i] > 0;
+    return in_use > 3;
+}
+
 static void set_usage_pct(int which, int pct) {
     if (usage_pct[which] == pct) return;
     usage_pct[which] = pct;
@@ -2368,7 +2376,8 @@ static void lists_tick(void) {
     ScrollList* l = nullptr;
     switch (current_screen) {
     case SCREEN_AGENDA:   l = &agenda_list; break;
-    case SCREEN_USAGE:    l = &usage_list; break;
+    // Consumo Atual only glides down when a hidden panel has usage; else it stays put.
+    case SCREEN_USAGE:    l = usage_hidden_in_use() ? &usage_list : nullptr; break;
     case SCREEN_ACTIONS:  l = &actions_list; break;
     case SCREEN_ROUTINES: l = &routines_list; break;
     case SCREEN_CRYPTO:   l = &quote_tables[QUOTES_CRYPTO].list; break;
