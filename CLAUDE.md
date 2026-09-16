@@ -21,7 +21,9 @@
    tela (`accent_tick` / `splash_kiro_on_screen`): Kiro → roxo, Clawd → laranja.
    **Gemini** (Antigravity CLI): azul-claro (`COL_AG`, `#64b5f6`) como primária e branco como
    secundária (tokens do Antigravity CLI lidos de `~/.gemini/antigravity-cli`,
-   `daemon/antigravity_usage.py`). Aparece em Uso (painel), Consumo 24h e Últimas Ações.
+   `daemon/antigravity_usage.py`). Aparece em Uso (painel **Gemini - Weekly**: % da cota semanal
+   já usada, lida de `agy -p /quota` em `daemon/antigravity_quota.py`; painel **Gemini - Daily**: tokens de hoje
+   em % do dia de maior uso dos últimos 30, pois o Antigravity não tem cota diária), Consumo 24h e Últimas Ações.
    Cores de dado (séries Claude × Kiro × Antigravity em Consumo 24h e Últimas Ações) são fixas.
 3. **O boneco do Kiro JAMAIS pode usar a camisa do Flamengo.** A única camisa de
    time permitida é a do Vasco (`kiro_vasco` em `tools/make_kiro_ghost.py`).

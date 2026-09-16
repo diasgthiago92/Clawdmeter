@@ -1,7 +1,8 @@
 # Demo roteirizado: pio run -e sim_demo; SIM_SCENARIO=sim/demo.jsonl SIM_RECORD=demo.mp4 .pio/build/sim_demo/program
 {"name":"uso","hold_ms":40,"s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"kiro","hold_ms":40,"k":[36,18]}
-{"name":"gemini","hold_ms":40,"ag":[914548,48,12]}
+{"name":"gemini","hold_ms":40,"agw":[38,8340]}
+{"name":"gemini hoje","hold_ms":40,"ag":[914548,48,12]}
 {"name":"consumo 24h","hold_ms":40,"hb":["AAAAAAFAAJh5wAAAAAAATXnX","AAAAAAOrTAAAAAc5mAAAAJYA","AAAAAAAALgAAAAAAAY5AAAAE"],"tc":139909602,"tk":49,"ta":474548}
 {"name":"agenda","hold_ms":30,"g":[["Dia","","Aniversário da Ana",1],["09:00","09:15","Daily VAS",0]],"o":0,"n":9}
 {"name":"agenda","hold_ms":30,"g":[["10:00","11:00","Planejamento Sprint",1],["11:30","12:00","1:1 com gestora",2]],"o":2,"n":9}

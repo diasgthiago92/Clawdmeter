@@ -206,8 +206,12 @@ static bool handle_extra_json(const char* json) {
         splash_set_almirante((doc["alm"] | 0) != 0);
         return true;
     }
-    if (doc["ag"].is<JsonArray>()) {          // Antigravity today: [tokens, % of busiest day, responses]
-        ui_update_antigravity(doc["ag"][0] | (uint64_t)0, doc["ag"][1] | 0, doc["ag"][2] | 0);
+    if (doc["agw"].is<JsonArray>()) {         // Gemini weekly quota: [used %, minutes to reset], -1 = unknown
+        ui_update_antigravity(doc["agw"][0] | -1, doc["agw"][1] | -1);
+        return true;
+    }
+    if (doc["ag"].is<JsonArray>()) {          // Gemini today: [tokens, % of busiest day, responses]
+        ui_update_antigravity_daily(doc["ag"][0] | (uint64_t)0, doc["ag"][1] | 0, doc["ag"][2] | 0);
         return true;
     }
     if (doc["pb"].is<JsonArray>()) {         // mouse / keyboard battery %, -1 = unknown
