@@ -552,6 +552,34 @@ static lv_obj_t* lbl_ag_day_label;
 static lv_obj_t* bar_ag_day;
 static lv_obj_t* lbl_ag_day_reset;
 
+// Large layout: panels are sorted by usage %, highest on top. Ties and panels
+// without data (-1, at the bottom) keep the default order below.
+enum { UP_CLAUDE_WEEK, UP_KIRO, UP_AG_WEEK, UP_CLAUDE_DAY, UP_AG_DAY, UP_COUNT };
+static int usage_pct[UP_COUNT] = {-1, -1, -1, -1, -1};
+
+static void sort_usage_panels(void) {
+    if (!L.kiro_panel) return;
+    lv_obj_t* panel[UP_COUNT] = {panel_weekly, panel_kiro, panel_ag, panel_session, panel_ag_day};
+    int order[UP_COUNT];
+    for (int i = 0; i < UP_COUNT; i++) {
+        int j = i;
+        while (j > 0 && usage_pct[order[j - 1]] < usage_pct[i]) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+    }
+    for (int i = 0; i < UP_COUNT; i++) {
+        if (panel[order[i]]) lv_obj_set_y(panel[order[i]], i * (L.usage_panel_h + L.usage_panel_gap));
+    }
+}
+
+static void set_usage_pct(int which, int pct) {
+    if (usage_pct[which] == pct) return;
+    usage_pct[which] = pct;
+    sort_usage_panels();
+}
+
 static void init_usage_screen(lv_obj_t* scr) {
     usage_container = lv_obj_create(scr);
     lv_obj_set_size(usage_container, L.scr_w, L.scr_h);
@@ -995,6 +1023,7 @@ static lv_obj_t* make_usage_scroll_box(lv_obj_t* parent, int y, int w, int visib
 
 void ui_update_antigravity(int used_pct, int reset_mins) {
     if (!panel_ag) return;
+    set_usage_pct(UP_AG_WEEK, used_pct < 0 ? -1 : used_pct);
     // Like Claude - Weekly: the big number is the share of the weekly limit
     // already used (Antigravity reports what remains), reset time below.
     if (used_pct < 0) {
@@ -1012,6 +1041,7 @@ void ui_update_antigravity(int used_pct, int reset_mins) {
 
 void ui_update_antigravity_daily(uint64_t tokens_today, int pct_of_peak, int responses) {
     if (!panel_ag_day) return;
+    set_usage_pct(UP_AG_DAY, pct_of_peak);
     // No daily quota exists: the big number is today vs. the busiest day of
     // the last 30, the token count goes in the line below.
     char buf[48];
@@ -1839,6 +1869,7 @@ void ui_update_kiro(int percent, int reset_days, int credits_used, int credit_li
     kiro_pct = percent;
     kiro_reset_days = reset_days;
     if (!panel_kiro) return;
+    set_usage_pct(UP_KIRO, percent < 0 ? -1 : percent);
     if (percent < 0) {
         lv_label_set_text(lbl_kiro_pct, "---%");
         lv_bar_set_value(bar_kiro, 0, LV_ANIM_OFF);
@@ -2237,12 +2268,14 @@ void ui_update(const UsageData* data) {
     }
 
     lv_bar_set_value(bar_session, s_pct, LV_ANIM_ON);
+    set_usage_pct(UP_CLAUDE_DAY, s_pct);
 
     if (data->enterprise) {
         // Period box: time % + dynamic pace color + "Resets <date>" label
         lv_label_set_text(lbl_weekly_label, "Período");
         lv_label_set_text_fmt(lbl_weekly_pct, "%d%%", data->time_pct);
         lv_bar_set_value(bar_weekly, data->time_pct, LV_ANIM_ON);
+        set_usage_pct(UP_CLAUDE_WEEK, data->time_pct);
         lv_color_t bar_pace = (data->session_pct <= (float)data->time_pct) ? COL_GREEN :
                               (data->session_pct <= (float)data->time_pct + 15.0f) ? COL_AMBER :
                               COL_RED;
@@ -2254,6 +2287,7 @@ void ui_update(const UsageData* data) {
         int w_pct = (int)(data->weekly_pct + 0.5f);
         lv_label_set_text_fmt(lbl_weekly_pct, "%d%%", w_pct);
         lv_bar_set_value(bar_weekly, w_pct, LV_ANIM_ON);
+        set_usage_pct(UP_CLAUDE_WEEK, w_pct);
         format_reset_time(data->weekly_reset_mins, buf, sizeof(buf));
         lv_label_set_text(lbl_weekly_reset, buf);
     }
