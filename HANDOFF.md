@@ -1,4 +1,4 @@
-# Passagem de contexto — Clawdmeter (atualizado em 15/09/2026)
+# Passagem de contexto — Clawdmeter (atualizado em 16/09/2026)
 
 Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre). Responder em português.
 
@@ -21,6 +21,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
   `daemon/tests/test_*.py` (menos os de Windows/Linux).
 
 ## Telas (ordem de toque: direita avança, esquerda volta)
+Segurar o dedo no centro por 2 s pausa/retoma a troca automática de telas (16/09/2026).
 Clawd (tela inicial) → **Consumo Atual** (painéis ordenados pelo % de uso, maior no topo; empate/sem dados segue Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily, Gemini Daily; só desliza sozinha se algum painel escondido tiver uso > 0%) →
 **Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Últimas Ações** (últimos commits de Claude, Kiro e Gemini) → **Rotinas Automáticas** →
 **Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
