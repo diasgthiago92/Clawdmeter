@@ -296,6 +296,7 @@ static const RotationStep ROTATION[] = {
     {SCREEN_ROUTINES, 12000},
     {SCREEN_CRYPTO,  24000},   // 20%
     {SCREEN_STOCKS,  12000},   // 10%
+    {SCREEN_RATES,   12000},
     {SCREEN_FIIS,    12000},
     {SCREEN_VASCO,   12000},   // 10%
 };
@@ -1296,6 +1297,198 @@ void ui_update_stock_index(const char* value, float change_pct) {
     lv_label_set_text(t.note, buf);
 }
 
+// ---- Juros Futuros: the whole DI1 curve on one screen ----
+// Today's curve in the accent color over the previous settlement (dim), x by
+// maturity date, with the first and last contracts spelled out below.
+#define RATE_X_LABELS 20
+static lv_obj_t*  rates_container;
+static lv_obj_t*  rates_chart;            // plot area; lines and axis labels live inside
+static lv_obj_t*  rates_line_today;
+static lv_obj_t*  rates_line_prev;
+static lv_obj_t*  rates_grid[3];
+static lv_obj_t*  rates_y_labels[3];
+static lv_obj_t*  rates_x_labels[RATE_X_LABELS];
+static lv_obj_t*  rates_first;
+static lv_obj_t*  rates_last;
+static lv_obj_t*  rates_empty;
+static lv_obj_t*  rates_note;
+static RatePoint  rates[RATES_MAX];
+static int        rates_total = 0;
+static lv_point_precise_t rates_pts_today[RATES_MAX];
+static lv_point_precise_t rates_pts_prev[RATES_MAX];
+static int        rates_plot_x, rates_plot_y, rates_plot_w, rates_plot_h;
+static const char* const RATE_MONTHS[12] = {"jan", "fev", "mar", "abr", "mai", "jun",
+                                            "jul", "ago", "set", "out", "nov", "dez"};
+
+static lv_obj_t* make_rate_line(lv_obj_t* parent, lv_color_t color, int width) {
+    lv_obj_t* l = lv_line_create(parent);
+    lv_obj_set_style_line_color(l, color, 0);
+    lv_obj_set_style_line_width(l, width, 0);
+    lv_obj_set_style_line_rounded(l, true, 0);
+    lv_obj_set_pos(l, 0, 0);
+    lv_obj_add_flag(l, LV_OBJ_FLAG_EVENT_BUBBLE);
+    return l;
+}
+
+static void init_rates_screen(lv_obj_t* scr) {
+    rates_container = make_screen_container(scr, "Juros Futuros");
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(rates_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+    const int axis_h  = lv_font_get_line_height(L.axis_font);
+    const int stat_h  = lv_font_get_line_height(L.table_font_dense);
+
+    // Plot: y labels on the left, year labels under it, two stat lines and the note below.
+    const int chart_h = inner_h - axis_h - 2 * stat_h - axis_h - 16;
+    rates_chart = lv_obj_create(panel);
+    lv_obj_remove_style_all(rates_chart);
+    lv_obj_set_pos(rates_chart, 0, 0);
+    lv_obj_set_size(rates_chart, inner_w, chart_h + axis_h + 4);
+    lv_obj_clear_flag(rates_chart, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+    lv_obj_add_flag(rates_chart, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+    lv_obj_t* probe = make_dim_label(rates_chart, L.axis_font, "14,25%");
+    lv_obj_update_layout(probe);
+    rates_plot_x = lv_obj_get_width(probe) + 10;
+    lv_obj_delete(probe);
+    rates_plot_w = inner_w - rates_plot_x - 6;
+    rates_plot_y = axis_h / 2 + 2;          // room for the top y label
+    rates_plot_h = chart_h - rates_plot_y - 4;
+
+    for (int i = 0; i < 3; i++) {
+        rates_grid[i] = lv_obj_create(rates_chart);
+        lv_obj_remove_style_all(rates_grid[i]);
+        lv_obj_set_style_bg_color(rates_grid[i], COL_BAR_BG, 0);
+        lv_obj_set_style_bg_opa(rates_grid[i], LV_OPA_COVER, 0);
+        lv_obj_set_size(rates_grid[i], rates_plot_w, 1);
+        rates_y_labels[i] = make_dim_label(rates_chart, L.axis_font, "");
+        lv_obj_add_flag(rates_grid[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(rates_y_labels[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    for (auto& x : rates_x_labels) {
+        x = make_dim_label(rates_chart, L.axis_font, "");
+        lv_obj_add_flag(x, LV_OBJ_FLAG_HIDDEN);
+    }
+    rates_line_prev  = make_rate_line(rates_chart, COL_DIM, 2);
+    rates_line_today = make_rate_line(rates_chart, accent_color, 4);
+
+    const int stats_y = chart_h + axis_h + 8;
+    rates_first = make_dim_label(panel, L.table_font_dense, "");
+    lv_label_set_recolor(rates_first, true);
+    lv_obj_set_pos(rates_first, 0, stats_y);
+    rates_last = make_dim_label(panel, L.table_font_dense, "");
+    lv_label_set_recolor(rates_last, true);
+    lv_obj_set_pos(rates_last, 0, stats_y + stat_h);
+
+    rates_empty = make_dim_label(panel, L.reset_font, "Buscando taxas...");
+    lv_obj_align(rates_empty, LV_ALIGN_CENTER, 0, 0);
+    rates_note = make_dim_label(panel, L.axis_font, "");
+    lv_label_set_recolor(rates_note, true);
+    lv_obj_align(rates_note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+static int rate_months(int yymm) { return (yymm / 100) * 12 + (yymm % 100 - 1); }
+
+static void format_rate(int32_t milli, char* buf, size_t len) {
+    snprintf(buf, len, "%d,%02d%%", (int)(milli / 1000), (int)((milli % 1000 + 5) / 10));
+}
+
+// "jan/27  13,59%  -1 bp" with the move colored like the quote tables.
+static void format_rate_stat(const char* prefix, const RatePoint& p, char* buf, size_t len) {
+    char rate[16];
+    format_rate(p.rate, rate, sizeof(rate));
+    const int bp = (p.rate - p.prev + (p.rate >= p.prev ? 5 : -5)) / 10;
+    const int mm = p.yymm % 100;
+    snprintf(buf, len, "%s #faf9f5 %s/%02d#  #faf9f5 %s#  #%s %+d bp#", prefix,
+             RATE_MONTHS[(mm >= 1 && mm <= 12) ? mm - 1 : 0], p.yymm / 100, rate,
+             bp < 0 ? "c0392b" : bp > 0 ? "788c5d" : "b0aea5", bp);
+    if (bp == 0) {                            // "+0 bp" reads oddly
+        char* plus = strstr(buf, "+0 bp");
+        if (plus) memmove(plus, plus + 1, strlen(plus));
+    }
+}
+
+static void render_rates(void) {
+    if (!rates_container) return;
+    lv_label_set_text_fmt(rates_note, "B3 \xC2\xB7 DI1 \xC2\xB7 #%s hoje# \xC2\xB7 ajuste anterior", accent_hex);
+    const int n = rates_total;
+    const bool have = n >= 2;
+    if (have) lv_obj_add_flag(rates_empty, LV_OBJ_FLAG_HIDDEN);
+    else      lv_obj_clear_flag(rates_empty, LV_OBJ_FLAG_HIDDEN);
+    if (!have) {
+        lv_obj_add_flag(rates_chart, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(rates_first, "");
+        lv_label_set_text(rates_last, "");
+        return;
+    }
+    lv_obj_clear_flag(rates_chart, LV_OBJ_FLAG_HIDDEN);
+
+    int32_t lo = INT32_MAX, hi = INT32_MIN;
+    for (int i = 0; i < n; i++) {
+        lo = LV_MIN(lo, LV_MIN(rates[i].rate, rates[i].prev));
+        hi = LV_MAX(hi, LV_MAX(rates[i].rate, rates[i].prev));
+    }
+    lo = (lo / 100) * 100;                    // round out to 0,1% steps
+    hi = ((hi + 99) / 100) * 100;
+    if (hi <= lo) hi = lo + 100;
+    const int m0 = rate_months(rates[0].yymm);
+    const int span = LV_MAX(1, rate_months(rates[n - 1].yymm) - m0);
+    auto px = [&](int yymm) { return rates_plot_x + (rate_months(yymm) - m0) * rates_plot_w / span; };
+    auto py = [&](int32_t milli) { return rates_plot_y + (int)((int64_t)(hi - milli) * rates_plot_h / (hi - lo)); };
+
+    for (int i = 0; i < n; i++) {
+        rates_pts_today[i] = {(lv_value_precise_t)px(rates[i].yymm), (lv_value_precise_t)py(rates[i].rate)};
+        rates_pts_prev[i]  = {(lv_value_precise_t)px(rates[i].yymm), (lv_value_precise_t)py(rates[i].prev)};
+    }
+    lv_line_set_points(rates_line_prev, rates_pts_prev, n);
+    lv_line_set_points(rates_line_today, rates_pts_today, n);
+
+    const int axis_h = lv_font_get_line_height(L.axis_font);
+    for (int i = 0; i < 3; i++) {
+        const int32_t v = hi - (hi - lo) * i / 2;
+        const int y = py(v);
+        lv_obj_set_pos(rates_grid[i], rates_plot_x, y);
+        char buf[16];
+        format_rate(v, buf, sizeof(buf));
+        lv_label_set_text(rates_y_labels[i], buf);
+        lv_obj_set_pos(rates_y_labels[i], 0, y - axis_h / 2);
+        lv_obj_clear_flag(rates_grid[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(rates_y_labels[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Year ticks at each January, spaced so the labels never touch.
+    const int per_year = rates_plot_w * 12 / span;
+    const int step = LV_MAX(1, (44 + per_year - 1) / LV_MAX(1, per_year));
+    int shown = 0;
+    const int first_year = rates[0].yymm / 100 + (rates[0].yymm % 100 > 1 ? 1 : 0);
+    const int last_year = rates[n - 1].yymm / 100;
+    for (int yy = first_year; yy <= last_year && shown < RATE_X_LABELS; yy += step) {
+        lv_obj_t* l = rates_x_labels[shown++];
+        lv_label_set_text_fmt(l, "%02d", yy);
+        lv_obj_update_layout(l);
+        const int x = px(yy * 100 + 1) - lv_obj_get_width(l) / 2;
+        lv_obj_set_pos(l, LV_MAX(rates_plot_x, LV_MIN(x, rates_plot_x + rates_plot_w - lv_obj_get_width(l))),
+                       rates_plot_y + rates_plot_h + 8);
+        lv_obj_clear_flag(l, LV_OBJ_FLAG_HIDDEN);
+    }
+    for (int i = shown; i < RATE_X_LABELS; i++) lv_obj_add_flag(rates_x_labels[i], LV_OBJ_FLAG_HIDDEN);
+
+    char buf[128];
+    format_rate_stat("Curto", rates[0], buf, sizeof(buf));
+    lv_label_set_text(rates_first, buf);
+    format_rate_stat("Longo", rates[n - 1], buf, sizeof(buf));
+    lv_label_set_text(rates_last, buf);
+}
+
+void ui_update_rates(const RatePoint* points, int offset, int count, int total) {
+    rates_total = total > RATES_MAX ? RATES_MAX : total;
+    for (int i = 0; i < count; i++) {
+        if (offset + i >= 0 && offset + i < rates_total) rates[offset + i] = points[i];
+    }
+    render_rates();
+}
+
 // ---- Google Calendar: today's meetings ----
 static const char* const COL_HEX_DIM = "b0aea5";   // THEME_DIM
 #define AGENDA_VISIBLE_ROWS 8
@@ -2136,6 +2329,7 @@ void ui_init(void) {
     init_actions_screen(scr);
     init_market_screens(scr);
     init_agenda_screen(scr);
+    init_rates_screen(scr);
     init_routines_screen(scr);
     init_games_screen(scr);
     init_live_screen(scr);
@@ -2473,6 +2667,7 @@ static void accent_tick(void) {
     meeting_shown_secs = -99999;
     if (lbl_game_detail[0]) lv_obj_set_style_text_color(lbl_game_detail[0], accent_color, 0);
     if (lbl_agenda_note)   render_agenda();
+    if (rates_line_today) { lv_obj_set_style_line_color(rates_line_today, accent_color, 0); render_rates(); }
 }
 
 void ui_tick_anim(void) {
@@ -2554,7 +2749,7 @@ static void apply_battery_visibility(void) {
 }
 
 // Taps navigate by side: right half goes forward, left half goes back, through
-// Clawd → Uso → Agenda → Consumo 24h → Últimas Ações → Rotinas Automáticas → Criptomoedas → Bovespa → FIIs
+// Clawd → Uso → Agenda → Consumo 24h → Últimas Ações → Rotinas Automáticas → Criptomoedas → Bovespa → Juros Futuros → FIIs
 // → Fundos Imobiliários
 // → Jogos do Vasco (→ Vasco ao vivo, only during a match) → Clawd. Long lists
 // scroll with a drag instead of paging. A tap pauses auto-rotation so the
@@ -2590,6 +2785,7 @@ void ui_show_screen(screen_t screen) {
     lv_obj_add_flag(actions_container, LV_OBJ_FLAG_HIDDEN);
     for (auto& t : quote_tables) lv_obj_add_flag(t.container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(games_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(rates_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(routines_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(agenda_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(live_container, LV_OBJ_FLAG_HIDDEN);
@@ -2613,6 +2809,7 @@ void ui_show_screen(screen_t screen) {
         scroll_list_show(&t.list);
         break;
     }
+    case SCREEN_RATES:   lv_obj_clear_flag(rates_container, LV_OBJ_FLAG_HIDDEN); break;
     case SCREEN_VASCO:   lv_obj_clear_flag(games_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&games_list); break;
     case SCREEN_LIVE:    lv_obj_clear_flag(live_container, LV_OBJ_FLAG_HIDDEN); break;
     case SCREEN_MEETING: lv_obj_clear_flag(meeting_container, LV_OBJ_FLAG_HIDDEN); break;
