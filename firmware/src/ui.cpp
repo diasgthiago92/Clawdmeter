@@ -308,9 +308,13 @@ static uint32_t screen_shown_ms = 0;
 static uint32_t tap_ms = 0;
 static bool     tap_hold = false;
 // Holding a finger still on the center for 2 s pauses auto-rotation; another
-// 2 s hold resumes it. Alerts (meeting, failed routine, live match) still show.
+// 2 s hold resumes it, and so does 1 h of pause. Alerts (meeting, failed routine, live match) still show.
 #define ROTATION_LOCK_HOLD_MS 2000
+#ifndef ROTATION_LOCK_MAX_MS
+#define ROTATION_LOCK_MAX_MS  3600000     // a pause left on for 1 h resumes by itself
+#endif
 static bool       rotation_locked = false;
+static uint32_t   rotation_locked_ms = 0; // when the pause started
 static uint32_t   hold_start_ms = 0;      // 0 = no touch; UINT32_MAX = touch can't toggle
 static lv_point_t hold_point;
 static bool       hold_toggled = false;   // this touch toggled the lock; its release isn't a tap
@@ -2382,6 +2386,7 @@ static void lock_hold_tick(lv_indev_t* indev, uint32_t now) {
     if (hold_start_ms == UINT32_MAX || now - hold_start_ms < ROTATION_LOCK_HOLD_MS) return;
     hold_toggled = true;
     rotation_locked = !rotation_locked;
+    rotation_locked_ms = now;
     tap_hold = false;                         // unlocking resumes right away, from a fresh dwell
     screen_shown_ms = now;
     show_lock_toast();
@@ -2420,6 +2425,11 @@ static void rotation_tick(void) {
     if (live_active) {
         if (current_screen != SCREEN_LIVE) ui_show_screen(SCREEN_LIVE);
         return;
+    }
+    if (rotation_locked && now - rotation_locked_ms >= ROTATION_LOCK_MAX_MS) {
+        rotation_locked = false;              // forgotten pause: resume from a fresh dwell
+        screen_shown_ms = now;
+        show_lock_toast();
     }
     if (rotation_locked) return;              // paused by a 2 s hold; taps still navigate
     if (now - screen_shown_ms < rotation_dwell_ms(current_screen)) return;

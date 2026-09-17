@@ -9,7 +9,8 @@
    até o fim devagar (25 px/s) e a rotação espera a lista terminar. Com o dedo
    encostado na tela a rotação nunca troca de tela. **Segurar o dedo parado no
    centro da tela por 2 s pausa a troca automática de telas** (aviso "Telas
-   pausadas"); segurar de novo por 2 s volta a passar ("Telas passando"). Esse
+   pausadas"); segurar de novo por 2 s volta a passar ("Telas passando").
+   **Pausado por mais de 1 hora, despausa sozinho** (`ROTATION_LOCK_MAX_MS`). Esse
    toque longo não navega; toques curtos continuam navegando com a rotação pausada,
    e telas de alerta (reunião, rotina falhou, Vasco ao vivo) ainda aparecem
    (`rotation_locked` / `lock_hold_tick` em `ui.cpp`). Telas que abrem num item relevante
