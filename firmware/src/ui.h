@@ -7,7 +7,6 @@ enum screen_t {
     SCREEN_USAGE,
     SCREEN_AGENDA,
     SCREEN_HISTORY,
-    SCREEN_ACTIONS,          // Últimas Ações (Claude, Kiro, Gemini)
     SCREEN_ROUTINES,
     SCREEN_CRYPTO,
     SCREEN_STOCKS,
@@ -26,8 +25,6 @@ void ui_update_history_bars(const char* claude, const char* kiro, const char* ag
                             uint64_t tokens, float kiro_credits, uint64_t ag_tokens);
 void ui_update_antigravity(int used_pct, int reset_mins);
 void ui_update_antigravity_daily(uint64_t tokens_today, int pct_of_peak, int responses);
-void ui_set_action(int index, const ActionRow& row);
-void ui_actions_received(int total);   // after a chunk of ui_set_action calls
 enum quote_table_t { QUOTES_CRYPTO, QUOTES_STOCKS, QUOTES_FIIS, QUOTE_TABLE_COUNT };
 void ui_update_quotes(quote_table_t table, const QuoteRow* rows, int offset, int count, int total);
 void ui_update_rates(const RatePoint* points, int offset, int count, int total);

@@ -25,7 +25,6 @@ import httpx
 from bleak import BleakClient
 from bleak.exc import BleakError
 
-from ai_actions import AiActions
 from market_quotes import CryptoQuotes, FiiQuotes, RateQuotes, StockQuotes
 from antigravity_quota import AntigravityQuota
 from antigravity_usage import AntigravityUsage
@@ -555,7 +554,6 @@ class PlanSelector:
 # Module-level so the active-plan state survives reconnects.
 _SELECTOR = PlanSelector()
 _MODEL_TALLY = ModelTokenTally()
-_AI_ACTIONS = AiActions()
 _CRYPTO = CryptoQuotes()
 _STOCKS = StockQuotes()
 _RATES = RateQuotes()
@@ -735,11 +733,6 @@ class Session:
                            "tc": sum(claude_hourly), "tk": round(sum(kiro_hourly) * cpr, 1), "ta": sum(ag_hourly)})
         except OSError as e:
             log(f"Model tally failed: {e}")
-        try:
-            # Últimas Ações: latest tool calls of Claude, Kiro and Gemini.
-            extras.extend(_AI_ACTIONS.payloads(read_config_dirs(), now))
-        except (OSError, sqlite3.Error) as e:
-            log(f"AI actions unavailable: {e}")
         extras.append(_KIRO.get(now))
         if sys.platform == "darwin":
             try:

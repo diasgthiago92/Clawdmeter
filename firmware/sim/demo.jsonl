@@ -54,7 +54,6 @@
 {"name":"consumo: canto","hold_ms":9000}
 {"name":"agenda","hold_ms":7000,"screen":"agenda","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"history","hold_ms":7000,"screen":"history","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
-{"name":"actions","hold_ms":8000,"screen":"actions","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"routines","hold_ms":9000,"screen":"routines","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"crypto","hold_ms":7000,"screen":"crypto","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"stocks","hold_ms":11500,"screen":"stocks","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}

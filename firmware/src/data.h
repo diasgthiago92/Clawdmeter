@@ -22,14 +22,6 @@ struct UsageData {
 // base64 alphabet index = round(pct * 63 / 100), '-' = no sample.
 #define HISTORY_BINS 96
 
-// Últimas Ações: newest tool calls per AI, grouped Claude → Kiro → Gemini.
-#define ACTIONS_MAX 24
-struct ActionRow {
-    uint8_t ai;              // 0 Claude, 1 Kiro, 2 Gemini
-    char    time[6];         // "HH:MM"; empty = the AI had no action in the window
-    char    text[72];        // UTF-8, already clipped by the daemon
-};
-
 // One row of the crypto / B3 tables: pre-formatted cells + change %.
 // A table holds up to QUOTE_TABLE_ROWS and shows QUOTE_PAGE_ROWS at a time.
 #define QUOTE_PAGE_ROWS  8

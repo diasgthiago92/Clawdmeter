@@ -23,7 +23,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
 ## Telas (ordem de toque: direita avança, esquerda volta)
 Segurar o dedo no centro por 2 s pausa/retoma a troca automática de telas; depois de 1 h pausado, retoma sozinho (16/09/2026).
 Clawd (tela inicial) → **Consumo Atual** (painéis ordenados pelo % de uso, maior no topo; empate/sem dados segue Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily, Gemini Daily; só desliza sozinha se algum painel escondido tiver uso > 0%) →
-**Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Últimas Ações** (últimos commits de Claude, Kiro e Gemini) → **Rotinas Automáticas** →
+**Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Rotinas Automáticas** →
 **Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Juros Futuros** (curva DI1 inteira num gráfico, hoje × ajuste anterior; rodapé com o vencimento mais curto e o mais longo) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
 Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; botão "Começar" abre o link Meet/Zoom/Teams no Mac via `{"mg":1}`), **Rotina falhou** (vermelha, botão
 "Rodar de novo"), **Vasco ao vivo**.
@@ -33,9 +33,7 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
   em `~/.gemini/antigravity-cli/conversations`, formato reverso-engenheirado).
 - Kiro: créditos do mês nos logs do Kiro IDE (real); 24h/5h = requisições do kiro-cli × crédito médio (estimado)
   (`kiro_usage.py`). Rotinas: Slack #leo-dias-news (`kiro_routines.py`, rerun só via lista fixa + launchctl).
-- Últimas Ações (`ai_actions.py`, payload `{"a": [[ia, "HH:MM" ou "dd/mm", assunto]], "o", "n"}`): últimos commits de cada IA, sem limite de tempo. Vêm do `git commit` que a IA rodou (repo pelo `cd`/`-C`, commit confirmado no `git log`) ou da linha `[branch sha] assunto` + `N files changed` na saída das ferramentas (pega scripts como o backup do Kiro). Fontes: tool_use dos transcripts do
-  Claude, sessões do kiro-cli (hora = prompt do turno) e `run_command` dos passos do
-  Antigravity. Até 6 por IA. Substituiu a antiga tela Modelos (15/09/2026).
+- A tela **Últimas Ações** (commits das IAs, `ai_actions.py`) foi retirada em 17/09/2026 a pedido do usuário.
 - Agenda: Google Calendar read-only (`google_agenda.py`, login em `google_calendar_login.py`).
 - Cotações: CoinGecko, Yahoo, Fundamentus (`market_quotes.py`). Juros futuros: API pública da B3 `cotacao.b3.com.br/mds/api/v1/DerivativeQuotation/DI1` (`RateQuotes`, payload `{"j": [[aamm, taxa, ajuste anterior]]}` em milésimos de %). Vasco: ESPN (`team_fixtures.py`).
 - Fantasias do dia (`costumes.py`): Vasco em dia de jogo > Natal > Carnaval > Halloween.
