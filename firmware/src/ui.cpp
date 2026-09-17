@@ -307,6 +307,15 @@ static const RotationStep ROTATION[] = {
 static uint32_t screen_shown_ms = 0;
 static uint32_t tap_ms = 0;
 static bool     tap_hold = false;
+// Holding a finger still on the center for 2 s pauses auto-rotation; another
+// 2 s hold resumes it. Alerts (meeting, failed routine, live match) still show.
+#define ROTATION_LOCK_HOLD_MS 2000
+static bool       rotation_locked = false;
+static uint32_t   hold_start_ms = 0;      // 0 = no touch; UINT32_MAX = touch can't toggle
+static lv_point_t hold_point;
+static bool       hold_toggled = false;   // this touch toggled the lock; its release isn't a tap
+static lv_obj_t*  lock_toast = nullptr;
+static uint32_t   lock_toast_ms = 0;
 
 static uint32_t rotation_dwell_ms(screen_t screen) {
     for (const auto& step : ROTATION) {
@@ -2326,23 +2335,73 @@ static void update_view_state(void) {
 
 static bool list_gliding = false;   // the visible screen's list hasn't reached its end yet
 
-static bool finger_down(void) {
+static lv_indev_t* finger_down(void) {
     for (lv_indev_t* indev = lv_indev_get_next(nullptr); indev; indev = lv_indev_get_next(indev)) {
         if (lv_indev_get_type(indev) == LV_INDEV_TYPE_POINTER && lv_indev_get_state(indev) == LV_INDEV_STATE_PRESSED)
-            return true;
+            return indev;
     }
-    return false;
+    return nullptr;
+}
+
+static void show_lock_toast(void) {
+    if (!lock_toast) {
+        lock_toast = lv_label_create(lv_layer_top());
+        lv_obj_set_style_text_font(lock_toast, &font_styrene_28, 0);
+        lv_obj_set_style_text_color(lock_toast, COL_TEXT, 0);
+        lv_obj_set_style_bg_color(lock_toast, COL_PANEL, 0);
+        lv_obj_set_style_bg_opa(lock_toast, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(lock_toast, 3, 0);
+        lv_obj_set_style_radius(lock_toast, 16, 0);
+        lv_obj_set_style_pad_hor(lock_toast, 24, 0);
+        lv_obj_set_style_pad_ver(lock_toast, 14, 0);
+    }
+    lv_label_set_text(lock_toast, rotation_locked ? "Telas pausadas" : "Telas passando");
+    lv_obj_set_style_border_color(lock_toast, accent_color, 0);
+    lv_obj_align(lock_toast, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(lock_toast, LV_OBJ_FLAG_HIDDEN);
+    lock_toast_ms = lv_tick_get();
+}
+
+// Holding a finger still on the middle of the screen for 2 s toggles the lock.
+static void lock_hold_tick(lv_indev_t* indev, uint32_t now) {
+    lv_point_t p = {0, 0};
+    lv_indev_get_point(indev, &p);
+    if (hold_start_ms == 0) {                 // a new touch just started
+        hold_start_ms = now;
+        hold_point = p;
+        hold_toggled = false;
+    }
+    if (hold_toggled) return;
+    const int cx = p.x - L.scr_w / 2, cy = p.y - L.scr_h / 2, r = L.scr_w / 4;
+    const int mx = p.x - hold_point.x, my = p.y - hold_point.y;
+    const bool alert = current_screen == SCREEN_MEETING || current_screen == SCREEN_ROUTINE_ALERT;
+    if (alert || cx * cx + cy * cy > r * r || mx * mx + my * my > 20 * 20) {
+        hold_start_ms = UINT32_MAX;           // moved or off-center: this touch can't toggle
+        return;
+    }
+    if (hold_start_ms == UINT32_MAX || now - hold_start_ms < ROTATION_LOCK_HOLD_MS) return;
+    hold_toggled = true;
+    rotation_locked = !rotation_locked;
+    tap_hold = false;                         // unlocking resumes right away, from a fresh dwell
+    screen_shown_ms = now;
+    show_lock_toast();
 }
 
 static void rotation_tick(void) {
     const uint32_t now = lv_tick_get();
+    if (lock_toast && !lv_obj_has_flag(lock_toast, LV_OBJ_FLAG_HIDDEN) && now - lock_toast_ms > 2000)
+        lv_obj_add_flag(lock_toast, LV_OBJ_FLAG_HIDDEN);
     // A finger on the glass (e.g. dragging a table) never lets the screen change;
     // the usual tap pause starts counting once it lifts.
-    if (finger_down()) {
+    if (lv_indev_t* indev = finger_down()) {
+        lock_hold_tick(indev, now);
+        if (hold_toggled) return;
         tap_ms = now;
         tap_hold = true;
         return;
     }
+    hold_start_ms = 0;
+    hold_toggled = false;                     // the release's click (if any) already ran
     if (tap_hold) {
         if (now - tap_ms < ROTATION_TAP_PAUSE_MS) return;
         tap_hold = false;
@@ -2362,6 +2421,7 @@ static void rotation_tick(void) {
         if (current_screen != SCREEN_LIVE) ui_show_screen(SCREEN_LIVE);
         return;
     }
+    if (rotation_locked) return;              // paused by a 2 s hold; taps still navigate
     if (now - screen_shown_ms < rotation_dwell_ms(current_screen)) return;
     if (list_gliding) return;                 // let a slow list finish before moving on
     size_t next = 0;
@@ -2501,6 +2561,7 @@ static screen_t step_screen(screen_t from, int dir) {
 
 static void global_click_cb(lv_event_t* e) {
     (void)e;
+    if (hold_toggled) return;                 // lifting after the 2 s pause/resume hold
     tap_ms = lv_tick_get();
     tap_hold = true;
 
