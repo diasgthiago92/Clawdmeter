@@ -15,6 +15,10 @@ the way it does for the Clawdmeter itself.
 Mouse or keyboard comes from System Information's "Minor Type" for that name.
 Devices on a USB 2.4G receiver aren't reachable this way and stay unknown.
 
+A device that drops out of both sources (e.g. a mouse restarting its radio when
+the charging cable goes in) keeps its last level for up to HOLD_S, so the corner
+doesn't blink away.
+
 Sent as {"pb": [mouse %, keyboard %]}, -1 = unknown.
 """
 
@@ -30,6 +34,7 @@ BATTERY_LEVEL = "00002a19-0000-1000-8000-00805f9b34fb"
 REFRESH_S = 60          # macOS power sources: cheap, read every minute
 GATT_REFRESH_S = 5 * 60 # GATT fallback opens connections, read less often
 READ_TIMEOUT_S = 15
+HOLD_S = 60 * 60        # keep a device's last level this long after it drops out
 
 
 def bluetooth_kinds() -> dict[str, str]:
@@ -83,6 +88,16 @@ def levels_by_kind(named: dict[str, int], kinds: dict[str, str], own_name: str) 
     return levels
 
 
+def hold_levels(seen: dict[str, tuple[int, float]], fresh: dict[str, int], now: float,
+                hold_s: float = HOLD_S) -> dict[str, int]:
+    """Merge a fresh reading into `seen` ({kind: (%, read at)}); return levels still within hold_s."""
+    for kind, pct in fresh.items():
+        seen[kind] = (pct, now)
+    for kind in [k for k, (_, at) in seen.items() if now - at > hold_s]:
+        del seen[kind]
+    return {kind: pct for kind, (pct, _) in seen.items()}
+
+
 def build_payload(levels: dict[str, int]) -> dict:
     return {"pb": [levels.get("mouse", -1), levels.get("keyboard", -1)]}
 
@@ -94,6 +109,7 @@ class PeripheralBattery:
         self.gatt_levels: dict[str, int] = {}
         self.read_at = 0.0
         self.gatt_read_at = 0.0
+        self.seen: dict[str, tuple[int, float]] = {}
 
     async def get(self, manager, now: float | None = None) -> dict:
         now = time.time() if now is None else now
@@ -105,7 +121,8 @@ class PeripheralBattery:
             if missing and now - self.gatt_read_at >= GATT_REFRESH_S:
                 self.gatt_read_at = now
                 self.gatt_levels = await self._read(manager, kinds)
-            self.levels = {**{k: v for k, v in self.gatt_levels.items() if k in missing}, **os_levels}
+            fresh = {**{k: v for k, v in self.gatt_levels.items() if k in missing}, **os_levels}
+            self.levels = hold_levels(self.seen, fresh, now)
         return build_payload(self.levels)
 
     async def _read(self, manager, kinds: dict[str, str]) -> dict[str, int]:
