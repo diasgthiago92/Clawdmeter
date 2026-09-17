@@ -125,7 +125,7 @@ static bool parse_json(const char* json, UsageData* out) {
     return true;
 }
 
-// History bars ("hb"), actions ("a"), crypto ("x"), B3 ("b") and fixtures ("v") payloads arrive as their own BLE writes so
+// History bars ("hb"), crypto ("x"), B3 ("b") and fixtures ("v") payloads arrive as their own BLE writes so
 // each stays under the host's write-without-response size. Returns true when
 // the JSON was one of these, leaving UsageData untouched.
 static bool handle_extra_json(const char* json) {
@@ -135,21 +135,6 @@ static bool handle_extra_json(const char* json) {
     if (doc["hb"].is<JsonArray>()) {         // stacked hourly bars: Claude tokens + Kiro requests
         ui_update_history_bars(doc["hb"][0] | "", doc["hb"][1] | "", doc["hb"][2] | "",
                                doc["tc"] | (uint64_t)0, doc["tk"] | 0.0f, doc["ta"] | (uint64_t)0);
-        return true;
-    }
-    if (doc["a"].is<JsonArray>()) {          // Últimas Ações, chunked like the tables
-        // One row at a time on the stack: a static row buffer here costs internal
-        // RAM, and the RGB panel's DMA buffers need every KB of it at boot.
-        const int offset = doc["o"] | 0;
-        int n = 0;
-        for (JsonArray src : doc["a"].as<JsonArray>()) {
-            ActionRow row = {};
-            row.ai = src[0] | 0;
-            strlcpy(row.time, src[1] | "", sizeof(row.time));
-            strlcpy(row.text, src[2] | "", sizeof(row.text));
-            ui_set_action(offset + n++, row);
-        }
-        ui_actions_received(doc["n"] | (offset + n));
         return true;
     }
     if (doc["g"].is<JsonArray>()) {
@@ -344,7 +329,7 @@ static void send_screenshot() {
 static void serial_show_screen(const char* name) {
     static const struct { const char* name; screen_t s; } SCREENS[] = {
         {"splash", SCREEN_SPLASH}, {"usage", SCREEN_USAGE}, {"agenda", SCREEN_AGENDA}, {"history", SCREEN_HISTORY},
-        {"actions", SCREEN_ACTIONS}, {"routines", SCREEN_ROUTINES}, {"crypto", SCREEN_CRYPTO},
+        {"routines", SCREEN_ROUTINES}, {"crypto", SCREEN_CRYPTO},
         {"stocks", SCREEN_STOCKS}, {"rates", SCREEN_RATES}, {"fiis", SCREEN_FIIS}, {"vasco", SCREEN_VASCO},
     };
     for (const auto& e : SCREENS) {

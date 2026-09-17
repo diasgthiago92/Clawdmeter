@@ -20,10 +20,10 @@ rotinas automáticas, cotações, jogos do Vasco, e tem mascotes em pixel art qu
 | <img src="docs/meu-clawdmeter/sim-bovespa.png" width="260"> | <img src="docs/meu-clawdmeter/sim-fiis.png" width="260"> | <img src="docs/meu-clawdmeter/placa-jogos-do-vasco.png" width="260"> |
 | 38 ações com P/VP, lista rolável | 30 FIIs | Próximos jogos (ESPN) |
 
-| Agenda de Hoje · simulador | Rotinas Automáticas · simulador | Últimas Ações · simulador |
-| :---: | :---: | :---: |
-| <img src="docs/meu-clawdmeter/sim-agenda.png" width="260"> | <img src="docs/meu-clawdmeter/sim-routines.png" width="260"> | <img src="docs/meu-clawdmeter/sim-actions.png" width="260"> |
-| Google Calendar, abre na reunião atual | Rotinas do dia, com "Rodar de novo" se falhar | Últimos commits de cada IA |
+| Agenda de Hoje · simulador | Rotinas Automáticas · simulador |
+| :---: | :---: |
+| <img src="docs/meu-clawdmeter/sim-agenda.png" width="260"> | <img src="docs/meu-clawdmeter/sim-routines.png" width="260"> |
+| Google Calendar, abre na reunião atual | Rotinas do dia, com "Rodar de novo" se falhar |
 
 | Reunião chegando · simulador | Gol do Vasco · simulador |
 | :---: | :---: |
@@ -64,7 +64,7 @@ Clawd e no Kiro vale o dia inteiro.
 - **Títulos limpos:** todos em Tiempos 34, numa linha, alinhados à esquerda logo depois do espaço onde o mascote
   se mexe. Antes, títulos grandes e centralizados quebravam em duas ou três linhas e encostavam em outros elementos.
 - **Nomes mais claros:** "Consumo" virou **Consumo Atual**, "Próximos Jogos do Vasco" virou **Jogos do Vasco** e a
-  antiga tela "Modelos" deu lugar a **Últimas Ações**.
+  antiga tela "Modelos" foi retirada.
 - **Bateria do mouse e do teclado com ícones:** pequenos ícones Lucide com o percentual, numa linha fina no topo
   direito, sem disputar espaço com o título. Abaixo de 20% ficam vermelhos. A leitura vem direto do Bluetooth.
 - **Uma cor por IA, em todo lugar:** Claude laranja (`#d97757`), Kiro roxo (`#9046ff`) e Gemini azul-claro
@@ -85,7 +85,6 @@ Clawd e no Kiro vale o dia inteiro.
 | Telas e layout | `firmware/src/ui.cpp` |
 | Mascotes e animações | `firmware/src/splash.cpp`, `tools/make_kiro_ghost.py`, `tools/make_almirante.py` |
 | Daemon do Mac (envia os dados por Bluetooth) | `daemon/claude_usage_daemon.py` |
-| Últimos commits das IAs | `daemon/ai_actions.py` |
 | Bateria do mouse e do teclado | `daemon/peripheral_battery.py` |
 | Agenda e botão Começar | `daemon/google_agenda.py` |
 | Jogos e janela do Almirante | `daemon/team_fixtures.py` |
