@@ -26,7 +26,7 @@ from bleak import BleakClient
 from bleak.exc import BleakError
 
 from ai_actions import AiActions
-from market_quotes import CryptoQuotes, FiiQuotes, StockQuotes
+from market_quotes import CryptoQuotes, FiiQuotes, RateQuotes, StockQuotes
 from antigravity_quota import AntigravityQuota
 from antigravity_usage import AntigravityUsage
 from costumes import costume_for
@@ -558,6 +558,7 @@ _MODEL_TALLY = ModelTokenTally()
 _AI_ACTIONS = AiActions()
 _CRYPTO = CryptoQuotes()
 _STOCKS = StockQuotes()
+_RATES = RateQuotes()
 _FIIS = FiiQuotes()
 _FIXTURES = TeamFixtures()
 _LIVE = LiveMatch(_FIXTURES)
@@ -746,7 +747,7 @@ class Session:
                 extras.append(await _PERIPHERALS.get(await _get_cb_manager(), now))
             except Exception as e:
                 log(f"Peripheral battery unavailable: {e}")
-        for label, source in (("Crypto", _CRYPTO), ("Stock", _STOCKS), ("FII", _FIIS), ("Fixtures", _FIXTURES), ("Routines", _ROUTINES), ("Agenda", _AGENDA)):
+        for label, source in (("Crypto", _CRYPTO), ("Stock", _STOCKS), ("Rates", _RATES), ("FII", _FIIS), ("Fixtures", _FIXTURES), ("Routines", _ROUTINES), ("Agenda", _AGENDA)):
             try:
                 extras.extend(await source.get(now))
             except (httpx.HTTPError, ValueError) as e:

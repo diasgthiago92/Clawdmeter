@@ -255,6 +255,19 @@ static bool handle_extra_json(const char* json) {
         ui_update_live(&m);
         return true;
     }
+    if (doc["j"].is<JsonArray>()) {          // juros futuros curve, chunked like the tables
+        RatePoint pts[16] = {};
+        int n = 0;
+        for (JsonArray src : doc["j"].as<JsonArray>()) {
+            if (n >= 16) break;
+            pts[n].yymm = src[0] | 0;
+            pts[n].rate = src[1] | 0;
+            pts[n].prev = src[2] | 0;
+            n++;
+        }
+        ui_update_rates(pts, doc["o"] | 0, n, doc["n"] | n);
+        return true;
+    }
     static const struct { const char* key; quote_table_t table; } QUOTE_KEYS[] = {
         {"x", QUOTES_CRYPTO},
         {"b", QUOTES_STOCKS},
@@ -332,7 +345,7 @@ static void serial_show_screen(const char* name) {
     static const struct { const char* name; screen_t s; } SCREENS[] = {
         {"splash", SCREEN_SPLASH}, {"usage", SCREEN_USAGE}, {"agenda", SCREEN_AGENDA}, {"history", SCREEN_HISTORY},
         {"actions", SCREEN_ACTIONS}, {"routines", SCREEN_ROUTINES}, {"crypto", SCREEN_CRYPTO},
-        {"stocks", SCREEN_STOCKS}, {"fiis", SCREEN_FIIS}, {"vasco", SCREEN_VASCO},
+        {"stocks", SCREEN_STOCKS}, {"rates", SCREEN_RATES}, {"fiis", SCREEN_FIIS}, {"vasco", SCREEN_VASCO},
     };
     for (const auto& e : SCREENS) {
         if (strcmp(e.name, name) == 0) {

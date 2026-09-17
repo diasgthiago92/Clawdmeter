@@ -36,6 +36,14 @@ struct ActionRow {
 #define QUOTE_TABLE_ROWS 48
 #define QUOTE_CELLS      4
 
+// One DI1 futures contract ({"j": [[yymm, rate, prev], ...]}), rates in 1/1000 %.
+#define RATES_MAX 48
+struct RatePoint {
+    int16_t yymm;            // 2701 = jan/27
+    int32_t rate;            // 13590 = 13,59%
+    int32_t prev;            // previous day's settlement
+};
+
 #define GAMES_MAX 10
 struct GameRow {
     char opponent[20];

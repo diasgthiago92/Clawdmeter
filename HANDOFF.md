@@ -24,7 +24,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
 Segurar o dedo no centro por 2 s pausa/retoma a troca automática de telas; depois de 1 h pausado, retoma sozinho (16/09/2026).
 Clawd (tela inicial) → **Consumo Atual** (painéis ordenados pelo % de uso, maior no topo; empate/sem dados segue Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily, Gemini Daily; só desliza sozinha se algum painel escondido tiver uso > 0%) →
 **Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Últimas Ações** (últimos commits de Claude, Kiro e Gemini) → **Rotinas Automáticas** →
-**Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
+**Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Juros Futuros** (curva DI1 inteira num gráfico, hoje × ajuste anterior; rodapé com o vencimento mais curto e o mais longo) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
 Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; botão "Começar" abre o link Meet/Zoom/Teams no Mac via `{"mg":1}`), **Rotina falhou** (vermelha, botão
 "Rodar de novo"), **Vasco ao vivo**.
 
@@ -37,7 +37,7 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
   Claude, sessões do kiro-cli (hora = prompt do turno) e `run_command` dos passos do
   Antigravity. Até 6 por IA. Substituiu a antiga tela Modelos (15/09/2026).
 - Agenda: Google Calendar read-only (`google_agenda.py`, login em `google_calendar_login.py`).
-- Cotações: CoinGecko, Yahoo, Fundamentus (`market_quotes.py`). Vasco: ESPN (`team_fixtures.py`).
+- Cotações: CoinGecko, Yahoo, Fundamentus (`market_quotes.py`). Juros futuros: API pública da B3 `cotacao.b3.com.br/mds/api/v1/DerivativeQuotation/DI1` (`RateQuotes`, payload `{"j": [[aamm, taxa, ajuste anterior]]}` em milésimos de %). Vasco: ESPN (`team_fixtures.py`).
 - Fantasias do dia (`costumes.py`): Vasco em dia de jogo > Natal > Carnaval > Halloween.
 - **Almirante** (mascote do Vasco): só de 2 h antes do início do jogo até o fim do dia (`{"alm": 1}`, `almirante_window` em `team_fixtures.py`); a camisa do Vasco no Clawd e no Kiro continua valendo o dia inteiro. Terceiro na fila depois do Kiro. No canto de
   todas as telas (células de 2 px, `MAS_ALMIRANTE`): parado → sai andando pela esquerda → aparece grande na borda direita

@@ -294,6 +294,46 @@ class StockQuotes(_Refreshing):
         return chunk_table(self.key, rows, header)
 
 
+B3_DI1_URL = "https://cotacao.b3.com.br/mds/api/v1/DerivativeQuotation/DI1"
+RATES_REFRESH_S = 300
+
+
+def build_rate_rows(data: dict) -> list:
+    """DI1 futures curve by maturity: [yymm, rate, previous settlement], rates in 1/1000 %.
+
+    The rate is the last trade, or the previous settlement when the contract hasn't traded.
+    """
+    rows = []
+    for s in data.get("Scty") or []:
+        try:
+            maturity = s["asset"]["AsstSummry"]["mtrtyCode"]
+            year, month = int(maturity[:4]), int(maturity[5:7])
+        except (KeyError, TypeError, ValueError):
+            continue
+        q = s.get("SctyQtn") or {}
+        prev = q.get("prvsDayAdjstmntPric")
+        if not isinstance(prev, (int, float)) or prev <= 0:
+            continue
+        rate = q.get("curPrc")
+        if not isinstance(rate, (int, float)) or rate <= 0:
+            rate = prev
+        rows.append([(year % 100) * 100 + month, round(rate * 1000), round(prev * 1000)])
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
+class RateQuotes(_Refreshing):
+    """Brazil's DI futures curve (B3 DI1 contracts, delayed quotes)."""
+
+    refresh_s = RATES_REFRESH_S
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    async def _fetch(self, http: httpx.AsyncClient) -> list[dict]:
+        resp = await http.get(B3_DI1_URL)
+        resp.raise_for_status()
+        return chunk_table("j", build_rate_rows(resp.json()))
+
+
 class FiiQuotes(StockQuotes):
     key = "f"
     tickers = FIIS
