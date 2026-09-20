@@ -1932,6 +1932,14 @@ void ui_update_posts(const PostRow* rows, int offset, int count, int total) {
         if (offset + i >= 0 && offset + i < posts_total) posts[offset + i] = rows[i];
     }
     for (int j = posts_total; j < POSTS_MAX; j++) posts[j] = PostRow{};
+    if (offset + count < posts_total) return;    // redraw once, after the last chunk (avoids flicker)
+    uint32_t h = 2166136261u;                    // the daemon resends the list every minute: skip if unchanged
+    const uint8_t* b = (const uint8_t*)posts;
+    for (size_t i = 0; i < sizeof(PostRow) * posts_total; i++) h = (h ^ b[i]) * 16777619u;
+    static uint32_t last_hash = 0;
+    static bool have_hash = false;
+    if (have_hash && h == last_hash) return;
+    last_hash = h; have_hash = true;
     render_posts();
 }
 
@@ -2587,6 +2595,51 @@ static void show_lock_toast(void) {
     lock_toast_ms = lv_tick_get();
 }
 
+// ---- Notice toast ----
+// A short message pushed by the Mac (e.g. "Post publicado" from the @eaiproduto
+// autopost). Lives on the top layer, so it shows over whatever screen is up,
+// green border for success and red for failure, and clears itself after 10 s.
+static lv_obj_t* notice_toast = nullptr;
+static lv_obj_t* lbl_notice = nullptr;
+static uint32_t  notice_ms = 0;
+static const uint32_t NOTICE_TOAST_MS = 10000;
+static const int NOTICE_PAD = 14, NOTICE_BORDER = 3;
+
+void ui_show_notice(const char* text, bool ok) {
+    if (!text || !*text) return;
+    if (!notice_toast) {
+        notice_toast = lv_obj_create(lv_layer_top());
+        lv_obj_remove_style_all(notice_toast);
+        lv_obj_clear_flag(notice_toast, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_bg_color(notice_toast, COL_PANEL, 0);
+        lv_obj_set_style_bg_opa(notice_toast, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(notice_toast, NOTICE_BORDER, 0);
+        lv_obj_set_style_radius(notice_toast, 16, 0);
+        lv_obj_set_style_pad_all(notice_toast, NOTICE_PAD, 0);
+        lv_obj_set_size(notice_toast, L.content_w, LV_SIZE_CONTENT);
+
+        lbl_notice = lv_label_create(notice_toast);
+        lv_label_set_long_mode(lbl_notice, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(lbl_notice, L.content_w - 2 * (NOTICE_PAD + NOTICE_BORDER));
+        lv_obj_set_style_text_font(lbl_notice, L.reset_font, 0);
+        lv_obj_set_style_text_color(lbl_notice, COL_TEXT, 0);
+        lv_obj_set_style_text_align(lbl_notice, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_center(lbl_notice);
+    }
+    lv_label_set_text(lbl_notice, text);
+    lv_obj_set_style_border_color(notice_toast, ok ? COL_GREEN : COL_RED, 0);
+    lv_obj_align(notice_toast, LV_ALIGN_BOTTOM_MID, 0, -L.margin);
+    lv_obj_clear_flag(notice_toast, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(notice_toast);
+    notice_ms = lv_tick_get();
+}
+
+static void notice_tick(uint32_t now) {
+    if (notice_toast && !lv_obj_has_flag(notice_toast, LV_OBJ_FLAG_HIDDEN) &&
+        now - notice_ms > NOTICE_TOAST_MS)
+        lv_obj_add_flag(notice_toast, LV_OBJ_FLAG_HIDDEN);
+}
+
 // Holding a finger still on the middle of the screen for 2 s toggles the lock.
 static void lock_hold_tick(lv_indev_t* indev, uint32_t now) {
     lv_point_t p = {0, 0};
@@ -2617,6 +2670,7 @@ static void rotation_tick(void) {
     const uint32_t now = lv_tick_get();
     if (lock_toast && !lv_obj_has_flag(lock_toast, LV_OBJ_FLAG_HIDDEN) && now - lock_toast_ms > 2000)
         lv_obj_add_flag(lock_toast, LV_OBJ_FLAG_HIDDEN);
+    notice_tick(now);
     // A finger on the glass (e.g. dragging a table) never lets the screen change;
     // the usual tap pause starts counting once it lifts.
     if (lv_indev_t* indev = finger_down()) {

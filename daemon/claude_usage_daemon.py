@@ -32,6 +32,7 @@ from costumes import costume_for
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines, rerun
 from kiro_usage import KiroActivity, KiroUsage, credits_per_request
+from notices import drain as drain_notices
 from peripheral_battery import PeripheralBattery
 from posts_schedule import PostsSchedule
 from team_fixtures import LiveMatch, TeamFixtures, almirante_window, is_match_day
@@ -570,6 +571,7 @@ _ANTIGRAVITY = AntigravityUsage()
 _AG_QUOTA = AntigravityQuota()
 _AGENDA = GoogleAgenda()
 EXTRA_WRITE_GAP_S = 0.4
+NOTICE_WRITE_GAP_S = 2.0   # avisos em sequência: buffer RX único + tempo de leitura
 
 
 async def poll_active(selector: PlanSelector = _SELECTOR) -> tuple[dict | None, bool]:
@@ -689,6 +691,23 @@ class Session:
             log(f"Write failed: {e}")
             return False
 
+    async def write_notices(self) -> bool:
+        """Avisos enfileirados por outros scripts do Mac (ex.: autopost da @eaiproduto).
+
+        Chamada no topo do laço e também entre os extras: uma volta completa de
+        extras leva perto de um minuto, e um aviso de "post publicado" que só
+        aparece depois disso não serve para nada.
+        """
+        for i, notice in enumerate(drain_notices()):
+            # O firmware tem um único buffer RX: dois writes colados e o
+            # segundo se perde. Espaçar também dá tempo de ler o balão anterior
+            # quando dois avisos caem juntos.
+            if i:
+                await asyncio.sleep(NOTICE_WRITE_GAP_S)
+            if not await self.write_payload(notice):
+                return False
+        return True
+
     async def write_live(self) -> None:
         """Live score for a match in progress (throttled inside LiveMatch)."""
         try:
@@ -758,6 +777,8 @@ class Session:
         extras.append({"alm": int(almirante_window(_FIXTURES.events, utc_now))})
         for extra in extras:
             await asyncio.sleep(EXTRA_WRITE_GAP_S)
+            if not await self.write_notices():
+                return
             if not await self.write_payload(extra):
                 return
 
@@ -889,6 +910,7 @@ async def connect_and_run(target, stop_event: asyncio.Event) -> bool:
     try:
         while client.is_connected and not stop_event.is_set():
             now = time.time()
+            await session.write_notices()
             elapsed = now - last_poll
             if session.refresh_requested.is_set() or elapsed >= POLL_INTERVAL:
                 session.refresh_requested.clear()

@@ -88,6 +88,30 @@ Clawd e no Kiro vale o dia inteiro.
 | Bateria do mouse e do teclado | `daemon/peripheral_battery.py` |
 | Agenda e botão Começar | `daemon/google_agenda.py` |
 | Jogos e janela do Almirante | `daemon/team_fixtures.py` |
+| Avisos de outros scripts (balão na tela) | `daemon/notices.py` |
+
+## Avisos de outros scripts
+
+Qualquer script do Mac pode fazer o aparelho mostrar um balão por 10 s — borda
+verde quando deu certo, vermelha quando falhou. Basta acrescentar uma linha na
+fila que o daemon drena a cada tick (~5 s):
+
+```python
+import sys; sys.path.insert(0, "~/Clawdmeter/daemon")
+from notices import post
+post("eaiproduto: post publicado - 2026-09-17-tradingagents", ok=True)
+```
+
+Ou, sem importar nada, uma linha JSON em
+`~/.config/claude-usage-monitor/notices.jsonl`:
+`{"t": "texto", "ok": true, "ts": <epoch>}`.
+
+Avisos com mais de 5 min na fila são descartados (o aparelho não pisca notícia
+velha ao reconectar) e só os 5 últimos de uma enxurrada aparecem. O texto vai
+até 80 caracteres; acentos funcionam, mas travessão e reticências tipográficas
+são trocados por `-` e `...` porque a fonte do firmware não tem esses glifos.
+Quem usa hoje: o autopost da @eaiproduto
+(`~/.claude/projetos/eaiproduto/scripts/aviso.py`).
 
 ---
 
@@ -324,6 +348,9 @@ JSON payload format (written to RX):
 ```
 
 Fields: `s` = session %, `sr` = session reset (minutes), `w` = weekly %, `wr` = weekly reset (minutes), `st` = status, `ok` = success flag.
+
+Extra payloads follow the same characteristic, one key each — e.g.
+`{"nt": ["Post publicado", 1]}` shows a 10 s notice balloon (1 = ok, 0 = failure).
 
 ## Development
 

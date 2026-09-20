@@ -199,6 +199,13 @@ static bool handle_extra_json(const char* json) {
         ui_update_games(games, doc["o"] | 0, n, doc["n"] | n);
         return true;
     }
+    if (doc["nt"].is<JsonArray>()) {         // notice balloon: [text, 1 ok | 0 failed]
+        const char* text = doc["nt"][0] | "";
+        const bool ok = (doc["nt"][1] | 1) != 0;
+        Serial.printf("Notice (%s): %s\n", ok ? "ok" : "fail", text);
+        ui_show_notice(text, ok);
+        return true;
+    }
     if (!doc["cos"].isNull()) {              // the day's costume (Vasco match day / holidays)
         splash_set_costume(doc["cos"] | 0);
         return true;
