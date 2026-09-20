@@ -22,8 +22,8 @@ from pathlib import Path
 from market_quotes import chunk_table
 
 PROJECT = Path.home() / ".claude" / "projetos" / "eaiproduto"
-DAYS_BACK = 2
-DAYS_AHEAD = 5
+DAYS_BACK = 0             # só hoje e amanhã
+DAYS_AHEAD = 1
 POSTS_MAX = 48            # a lista do aparelho rola; o firmware guarda até isto
 TITLE_MAX = 24
 POSTS_REFRESH_S = 60
