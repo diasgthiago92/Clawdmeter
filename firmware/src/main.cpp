@@ -169,8 +169,9 @@ static bool handle_extra_json(const char* json) {
         return true;
     }
     if (doc["p"].is<JsonArray>()) {          // posts schedule: [network, when, title, state]
-        static PostRow rows[POSTS_MAX];
-        memset(rows, 0, sizeof(rows));
+        static PostRow* rows = (PostRow*)heap_caps_calloc(POSTS_MAX, sizeof(PostRow), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!rows) return true;
+        memset(rows, 0, sizeof(PostRow) * POSTS_MAX);
         int n = 0;
         for (JsonArray src : doc["p"].as<JsonArray>()) {
             if (n >= POSTS_MAX) break;

@@ -1817,12 +1817,21 @@ static lv_obj_t*  posts_cols[3];
 static lv_obj_t*  posts_icons[POSTS_MAX];
 static lv_obj_t*  lbl_posts_empty;
 static lv_obj_t*  lbl_posts_note;
-static PostRow    posts[POSTS_MAX];
+static PostRow*   posts;                    // PSRAM: internal RAM is needed by the RGB panel's bounce buffers
+static char*      posts_text;               // 3 columns x POSTS_TEXT_COL bytes, also PSRAM
+#define POSTS_TEXT_COL (POSTS_MAX * 64)
 static int        posts_total = 0;
 static lv_image_dsc_t posts_dscs[2];        // Instagram, TikTok
 static ScrollList posts_list;
 
+static void* posts_alloc(size_t bytes) {
+    void* p = heap_caps_calloc(1, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    return p ? p : heap_caps_calloc(1, bytes, MALLOC_CAP_8BIT);   // boards without PSRAM
+}
+
 static void init_posts_screen(lv_obj_t* scr) {
+    posts = (PostRow*)posts_alloc(sizeof(PostRow) * POSTS_MAX);
+    posts_text = (char*)posts_alloc(3 * POSTS_TEXT_COL);
     posts_container = make_screen_container(scr, "Cronograma");
 
     const int panel_h = L.scr_h - L.content_y - L.margin;
@@ -1877,7 +1886,7 @@ static void init_posts_screen(lv_obj_t* scr) {
 }
 
 static void render_posts(void) {
-    static char text[3][POSTS_MAX * 64];
+    char (*text)[POSTS_TEXT_COL] = (char (*)[POSTS_TEXT_COL])posts_text;
     size_t used[3] = {};
     int shown = 0, sent = 0, missed = 0, scheduled = 0, focus = -1;
     for (int r = 0; r < posts_total; r++) {
@@ -1917,7 +1926,7 @@ static void render_posts(void) {
 }
 
 void ui_update_posts(const PostRow* rows, int offset, int count, int total) {
-    if (!posts_container) return;
+    if (!posts_container || !posts) return;
     posts_total = total > POSTS_MAX ? POSTS_MAX : total;
     for (int i = 0; i < count; i++) {
         if (offset + i >= 0 && offset + i < posts_total) posts[offset + i] = rows[i];
