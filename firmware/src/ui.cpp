@@ -7,6 +7,7 @@
 #include "clawd_still.h"
 #include "icons.h"
 #include "periph_icons.h"
+#include "social_icons.h"
 #include "hal/board_caps.h"
 
 // Custom fonts (scaled for 314 PPI, ~1.9x from original 165 PPI)
@@ -293,6 +294,7 @@ static const RotationStep ROTATION[] = {
     {SCREEN_AGENDA,  12000},
     {SCREEN_HISTORY, 12000},   // 10%
     {SCREEN_ROUTINES, 12000},
+    {SCREEN_POSTS,   12000},
     {SCREEN_CRYPTO,  24000},   // 20%
     {SCREEN_STOCKS,  12000},   // 10%
     {SCREEN_RATES,   12000},
@@ -1806,6 +1808,124 @@ static void routines_tick(void) {
     }
 }
 
+// ---- Cronograma de posts (Instagram e TikTok) ----
+// Uma linha por lançamento, com o logo da rede; verde = enviado, vermelho = não
+// enviado, cinza = agendado. Dados: daemon/posts_schedule.py.
+#define POSTS_VISIBLE_ROWS 8
+static lv_obj_t*  posts_container;
+static lv_obj_t*  posts_cols[3];
+static lv_obj_t*  posts_icons[POSTS_MAX];
+static lv_obj_t*  lbl_posts_empty;
+static lv_obj_t*  lbl_posts_note;
+static PostRow    posts[POSTS_MAX];
+static int        posts_total = 0;
+static lv_image_dsc_t posts_dscs[2];        // Instagram, TikTok
+static ScrollList posts_list;
+
+static void init_posts_screen(lv_obj_t* scr) {
+    posts_container = make_screen_container(scr, "Cronograma");
+
+    const int panel_h = L.scr_h - L.content_y - L.margin;
+    lv_obj_t* panel = make_panel(posts_container, L.margin, L.content_y, L.content_w, panel_h);
+    const int inner_w = L.content_w - 2 * L.panel_pad_x;
+    const int inner_h = panel_h - 2 * L.panel_pad_y;
+
+    // One step smaller than the other lists: the title needs room next to the logo, date and status.
+    const lv_font_t* font = L.table_font_dense == &font_styrene_20 ? &font_styrene_16 : L.table_font_dense;
+    const int axis_h = lv_font_get_line_height(L.axis_font);
+    const int line_h = lv_font_get_line_height(font);
+    const int rows_y = axis_h + 4;
+    const int row_h  = (inner_h - rows_y - axis_h - 4) / POSTS_VISIBLE_ROWS;
+    lv_obj_t* box = scroll_list_create(&posts_list, panel, 0, rows_y, inner_w, POSTS_VISIBLE_ROWS, row_h);
+
+    init_icon_dsc_rgb565a8(&posts_dscs[0], ICON_INSTAGRAM_W, ICON_INSTAGRAM_H, icon_instagram_data);
+    init_icon_dsc_rgb565a8(&posts_dscs[1], ICON_TIKTOK_W, ICON_TIKTOK_H, icon_tiktok_data);
+
+    static const char* const headers[3] = {"Quando", "Post", "Envio"};
+    static const QuoteColumn cols[3] = {
+        {90, 315, LV_TEXT_ALIGN_LEFT, 0},
+        {330, 725, LV_TEXT_ALIGN_LEFT, 0},
+        {730, 1000, LV_TEXT_ALIGN_RIGHT, 0},
+    };
+    for (int c = 0; c < 3; c++) {
+        lv_obj_t* h = make_column(panel, L.axis_font, cols[c], inner_w, 0);
+        lv_label_set_text(h, headers[c]);
+        lv_obj_set_style_text_color(h, COL_DIM, 0);
+        lv_obj_t* col = make_column(box, font, cols[c], inner_w, (row_h - line_h) / 2);
+        lv_obj_set_height(col, row_h);
+        lv_obj_set_style_text_line_space(col, row_h - line_h, 0);
+        lv_label_set_recolor(col, true);
+        posts_cols[c] = col;
+    }
+    // A image per row (created once, moved and shown by render_posts): the logo scrolls with the list.
+    const int icon_h = row_h - 6 < ICON_INSTAGRAM_H ? row_h - 6 : ICON_INSTAGRAM_H;
+    for (int i = 0; i < POSTS_MAX; i++) {
+        lv_obj_t* img = lv_image_create(box);
+        lv_image_set_scale(img, 256 * icon_h / ICON_INSTAGRAM_H);
+        lv_image_set_inner_align(img, LV_IMAGE_ALIGN_CENTER);
+        lv_obj_set_size(img, ICON_INSTAGRAM_W, ICON_INSTAGRAM_H);
+        lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);
+        posts_icons[i] = img;
+    }
+
+    lbl_posts_empty = make_dim_label(panel, L.reset_font, "Buscando cronograma...");
+    lv_obj_align(lbl_posts_empty, LV_ALIGN_CENTER, 0, 0);
+
+    lbl_posts_note = make_dim_label(panel, L.axis_font, "");
+    lv_label_set_recolor(lbl_posts_note, true);
+    lv_obj_align(lbl_posts_note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
+static void render_posts(void) {
+    static char text[3][POSTS_MAX * 64];
+    size_t used[3] = {};
+    int shown = 0, sent = 0, missed = 0, scheduled = 0, focus = -1;
+    for (int r = 0; r < posts_total; r++) {
+        const PostRow& p = posts[r];
+        if (!p.title[0]) continue;               // chunk not arrived yet
+        const char* sep = shown ? "\n" : "";
+        const char* hex = p.state == POST_SENT ? "faf9f5" : p.state == POST_MISSED ? COL_HEX_RED : COL_HEX_DIM;
+        const char* word = p.state == POST_SENT ? "enviado" : p.state == POST_MISSED ? "n\xC3\xA3o enviado" : "agendado";
+        const char* wcol = p.state == POST_SENT ? COL_HEX_GREEN : hex;
+        used[0] += snprintf(text[0] + used[0], sizeof(text[0]) - used[0], "%s#%s %s#", sep, hex, p.when);
+        used[1] += snprintf(text[1] + used[1], sizeof(text[1]) - used[1], "%s#%s %s#", sep, hex, p.title);
+        used[2] += snprintf(text[2] + used[2], sizeof(text[2]) - used[2], "%s#%s %s#", sep, wcol, word);
+        if (p.state == POST_SENT) sent++;
+        else if (p.state == POST_MISSED) missed++;
+        else scheduled++;
+        if (focus < 0 && p.state != POST_SENT) focus = shown;   // opens on the first one not sent
+        lv_obj_t* img = posts_icons[shown];
+        lv_image_set_src(img, &posts_dscs[p.net == POST_NET_TIKTOK ? 1 : 0]);
+        lv_obj_set_pos(img, 0, shown * posts_list.row_h + (posts_list.row_h - ICON_INSTAGRAM_H) / 2);
+        lv_obj_clear_flag(img, LV_OBJ_FLAG_HIDDEN);
+        shown++;
+    }
+    for (int i = shown; i < POSTS_MAX; i++) lv_obj_add_flag(posts_icons[i], LV_OBJ_FLAG_HIDDEN);
+    for (int c = 0; c < 3; c++) {
+        text[c][used[c] < sizeof(text[c]) ? used[c] : sizeof(text[c]) - 1] = '\0';
+        lv_label_set_text(posts_cols[c], text[c]);
+        lv_obj_set_height(posts_cols[c], posts_list.row_h * (shown > 0 ? shown : 1));
+    }
+    posts_list.rows = shown;
+    if (focus < 0) focus = shown;
+    posts_list.focus = focus > 0 ? focus - 1 : 0;
+    lv_label_set_text_fmt(lbl_posts_note, "#%s %d enviados# \xC2\xB7 #%s %d n\xC3\xA3o enviados# \xC2\xB7 %d agendados",
+                          COL_HEX_GREEN, sent, COL_HEX_RED, missed, scheduled);
+    if (shown > 0) lv_obj_add_flag(lbl_posts_empty, LV_OBJ_FLAG_HIDDEN);
+    else           lv_obj_clear_flag(lbl_posts_empty, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(lbl_posts_empty, "Nenhum post no cronograma");
+}
+
+void ui_update_posts(const PostRow* rows, int offset, int count, int total) {
+    if (!posts_container) return;
+    posts_total = total > POSTS_MAX ? POSTS_MAX : total;
+    for (int i = 0; i < count; i++) {
+        if (offset + i >= 0 && offset + i < posts_total) posts[offset + i] = rows[i];
+    }
+    for (int j = posts_total; j < POSTS_MAX; j++) posts[j] = PostRow{};
+    render_posts();
+}
+
 static bool live_is_active(void);
 
 // ---- Meeting alert (Google Agenda) ----
@@ -2228,6 +2348,7 @@ void ui_init(void) {
     init_agenda_screen(scr);
     init_rates_screen(scr);
     init_routines_screen(scr);
+    init_posts_screen(scr);
     init_games_screen(scr);
     init_live_screen(scr);
     init_meeting_screen(scr);
@@ -2540,6 +2661,7 @@ static void lists_tick(void) {
     // Consumo Atual only glides down when a hidden panel has usage; else it stays put.
     case SCREEN_USAGE:    l = usage_hidden_in_use() ? &usage_list : nullptr; break;
     case SCREEN_ROUTINES: l = &routines_list; break;
+    case SCREEN_POSTS:    l = &posts_list; break;
     case SCREEN_CRYPTO:   l = &quote_tables[QUOTES_CRYPTO].list; break;
     case SCREEN_STOCKS:   l = &quote_tables[QUOTES_STOCKS].list; break;
     case SCREEN_FIIS:     l = &quote_tables[QUOTES_FIIS].list; break;
@@ -2645,7 +2767,7 @@ static void apply_battery_visibility(void) {
 }
 
 // Taps navigate by side: right half goes forward, left half goes back, through
-// Clawd → Uso → Agenda → Consumo 24h → Rotinas Automáticas → Criptomoedas → Bovespa → Juros Futuros → FIIs
+// Clawd → Uso → Agenda → Consumo 24h → Rotinas Automáticas → Cronograma de Posts → Criptomoedas → Bovespa → Juros Futuros → FIIs
 // → Fundos Imobiliários
 // → Jogos do Vasco (→ Vasco ao vivo, only during a match) → Clawd. Long lists
 // scroll with a drag instead of paging. A tap pauses auto-rotation so the
@@ -2682,6 +2804,7 @@ void ui_show_screen(screen_t screen) {
     lv_obj_add_flag(games_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(rates_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(routines_container, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(posts_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(agenda_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(live_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(meeting_container, LV_OBJ_FLAG_HIDDEN);
@@ -2694,6 +2817,7 @@ void ui_show_screen(screen_t screen) {
     case SCREEN_AGENDA:  lv_obj_clear_flag(agenda_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&agenda_list); break;
     case SCREEN_HISTORY: lv_obj_clear_flag(history_container, LV_OBJ_FLAG_HIDDEN); break;
     case SCREEN_ROUTINES: lv_obj_clear_flag(routines_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&routines_list); break;
+    case SCREEN_POSTS:   lv_obj_clear_flag(posts_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&posts_list); break;
     case SCREEN_CRYPTO:
     case SCREEN_STOCKS:
     case SCREEN_FIIS: {

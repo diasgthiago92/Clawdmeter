@@ -13,6 +13,21 @@
 {"name":"rotinas","hold_ms":30,"r":[["Backup local","10:31",1,2],["Backup Drive","10:31",0,2],["Organização e-mails","09:00",1,3]],"o":3,"n":10}
 {"name":"rotinas","hold_ms":30,"r":[["Daily Vehicle Report","08:12",1,1],["Vault Graph Sync","07:04",1,8],["Sprint Watcher","06:00",1,1]],"o":6,"n":10}
 {"name":"rotinas","hold_ms":30,"r":[["Support Report","05:30",1,1]],"o":9,"n":10}
+{"name": "posts", "hold_ms": 30, "p": [[0, "18/09 08h", "Proibidos de postar,...", 1], [0, "18/09 10h", "Apresentação da @eaip...", 1]], "o": 0, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "18/09 12h", "\"Faz um dashboard\" e...", 1], [0, "18/09 19h", "Pagando ChatGPT, Clau...", 2]], "o": 2, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "19/09 08h", "\"É só integrar com o...", 1], [0, "19/09 12h", "Vídeo da nova feature...", 1]], "o": 4, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "19/09 19h", "A primeira invasão fe...", 1], [0, "20/09 08h", "O Claude escreve 80%...", 1]], "o": 6, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "20/09 12h", "Mudou uma tela e prec...", 0], [0, "20/09 19h", "200 e-mails de beta e...", 0]], "o": 8, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "21/09 08h", "Vídeo curto em um cli...", 0], [1, "21/09 10h", "Apresentação da @eaip...", 0]], "o": 10, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "21/09 12h", "O texto do novo Claud...", 0], [0, "21/09 19h", "O terminal de mercado...", 0]], "o": 12, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "21/09 20h", "Curta de ação feito c...", 0], [1, "21/09 20h", "Curta de ação feito c...", 0]], "o": 14, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "22/09 08h", "Um domínio igual ao s...", 0], [0, "22/09 11h", "Animação com IA em 3...", 0]], "o": 16, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[1, "22/09 11h", "Animação com IA em 3...", 0], [0, "22/09 12h", "Os donos da IA pedira...", 0]], "o": 18, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "22/09 19h", "Imagem -> repo", 0], [0, "23/09 08h", "Tweet -> repo", 0], [0, "23/09 12h", "Tem gente lendo suas...", 0]], "o": 20, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "23/09 18h", "Reel P3 com telas: as...", 0], [1, "23/09 18h", "Reel P3 com telas: as...", 0], [0, "23/09 19h", "Imagem -> repo", 0]], "o": 23, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "24/09 08h", "Mesmo modelo, mesmo r...", 0], [0, "24/09 12h", "Tweet -> repo", 0], [0, "24/09 19h", "Imagem -> repo", 0]], "o": 26, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "25/09 08h", "Tweet -> repo", 0], [0, "25/09 12h", "Reel: advogado do dia...", 0], [1, "25/09 12h", "Reel: advogado do dia...", 0]], "o": 29, "n": 33}
+{"name": "posts", "hold_ms": 30, "p": [[0, "25/09 19h", "\"As pessoas não sabia...", 0]], "o": 32, "n": 33}
 {"name":"cripto","hold_ms":30,"x":[["BTC","394.016","76.919",-0.4],["ETH","12.741","2.487",-1.4],["BNB","3.677","717,87",-1.4],["SOL","510,97","99,75",-2.4]],"o":0,"n":8}
 {"name":"cripto","hold_ms":30,"x":[["XRP","6,90","1,35",-1.5],["ADA","1,05","0,2047",-1.5],["DOGE","0,4244","0,0828",-2.4],["LTC","277,51","54,17",0.5]],"o":4,"n":8}
 {"name":"bovespa","hold_ms":30,"b":[["PETR4","Petrobras","49,00","1,31",-0.2],["VALE3","Vale","78,20","1,77",0.0]],"o":0,"n":38,"i":["187.207",-0.6]}
@@ -55,6 +70,7 @@
 {"name":"agenda","hold_ms":7000,"screen":"agenda","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"history","hold_ms":7000,"screen":"history","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"routines","hold_ms":9000,"screen":"routines","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
+{"name": "posts", "hold_ms": 9000, "screen": "posts", "s": 62, "sr": 94, "w": 41, "wr": 3900, "st": "allowed", "acct": "pro", "ok": true}
 {"name":"crypto","hold_ms":7000,"screen":"crypto","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"stocks","hold_ms":11500,"screen":"stocks","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}
 {"name":"fiis","hold_ms":11500,"screen":"fiis","s":62,"sr":94,"w":41,"wr":3900,"st":"allowed","acct":"pro","ok":true}

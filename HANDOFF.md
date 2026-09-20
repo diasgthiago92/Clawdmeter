@@ -23,7 +23,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
 ## Telas (ordem de toque: direita avança, esquerda volta)
 Segurar o dedo no centro por 2 s pausa/retoma a troca automática de telas; depois de 1 h pausado, retoma sozinho (16/09/2026).
 Clawd (tela inicial) → **Consumo Atual** (painéis ordenados pelo % de uso, maior no topo; empate/sem dados segue Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily, Gemini Daily; só desliza sozinha se algum painel escondido tiver uso > 0%) →
-**Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Rotinas Automáticas** →
+**Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Rotinas Automáticas** → **Cronograma** (posts do Instagram e do TikTok) →
 **Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Juros Futuros** (curva DI1 inteira num gráfico, hoje × ajuste anterior; rodapé com o vencimento mais curto e o mais longo) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
 Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; botão "Começar" abre o link Meet/Zoom/Teams no Mac via `{"mg":1}`), **Rotina falhou** (vermelha, botão
 "Rodar de novo"), **Vasco ao vivo**.
@@ -34,6 +34,7 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
 - Kiro: créditos do mês nos logs do Kiro IDE (real); 24h/5h = requisições do kiro-cli × crédito médio (estimado)
   (`kiro_usage.py`). Rotinas: Slack #leo-dias-news (`kiro_routines.py`, rerun só via lista fixa + launchctl).
 - A tela **Últimas Ações** (commits das IAs, `ai_actions.py`) foi retirada em 17/09/2026 a pedido do usuário.
+- Cronograma (`posts_schedule.py`, payload `{"p": [[rede, "DD/MM HHh", título, estado]]}`, rede 0 Instagram/1 TikTok, estado 0 agendado/1 enviado/2 não enviado): lê o projeto `~/.claude/projetos/eaiproduto` só para leitura, reaproveitando `dashboard.cronograma(agora, dias_atras)` (2 dias atrás a 5 à frente, sem stories). TikTok = reels; "enviado" vem do log `logs/<slot>.log` (`TikTok: rascunho enviado`) ou do `enviado_em` de `content/tiktok-fila.json`. Logos em `firmware/src/social_icons.h`, gerados por `tools/make_social_icons.py` (ImageMagick).
 - Agenda: Google Calendar read-only (`google_agenda.py`, login em `google_calendar_login.py`).
 - Cotações: CoinGecko, Yahoo, Fundamentus (`market_quotes.py`). Juros futuros: API pública da B3 `cotacao.b3.com.br/mds/api/v1/DerivativeQuotation/DI1` (`RateQuotes`, payload `{"j": [[aamm, taxa, ajuste anterior]]}` em milésimos de %). Vasco: ESPN (`team_fixtures.py`).
 - Fantasias do dia (`costumes.py`): Vasco em dia de jogo > Natal > Carnaval > Halloween.

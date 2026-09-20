@@ -78,3 +78,14 @@ struct AgendaRow {
     char title[48];          // UTF-8, up to 30 characters
     uint8_t state;           // 0 over, 1 now, 2 upcoming
 };
+
+// Cronograma de posts da @eaiproduto: um lançamento no Instagram ou no TikTok.
+#define POSTS_MAX 48
+enum post_net_t : uint8_t { POST_NET_INSTAGRAM = 0, POST_NET_TIKTOK = 1 };
+enum post_state_t : uint8_t { POST_SCHEDULED = 0, POST_SENT = 1, POST_MISSED = 2 };
+struct PostRow {
+    uint8_t net;             // post_net_t
+    char    when[10];        // "DD/MM HHh" (or "DD/MM HH:MM")
+    char    title[28];       // UTF-8, up to 24 characters
+    uint8_t state;           // post_state_t
+};

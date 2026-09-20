@@ -168,6 +168,21 @@ static bool handle_extra_json(const char* json) {
         ui_update_routines(rows, doc["o"] | 0, n, doc["n"] | n);
         return true;
     }
+    if (doc["p"].is<JsonArray>()) {          // posts schedule: [network, when, title, state]
+        static PostRow rows[POSTS_MAX];
+        memset(rows, 0, sizeof(rows));
+        int n = 0;
+        for (JsonArray src : doc["p"].as<JsonArray>()) {
+            if (n >= POSTS_MAX) break;
+            rows[n].net = src[0] | 0;
+            strlcpy(rows[n].when, src[1] | "", sizeof(rows[n].when));
+            strlcpy(rows[n].title, src[2] | "", sizeof(rows[n].title));
+            rows[n].state = src[3] | 0;
+            n++;
+        }
+        ui_update_posts(rows, doc["o"] | 0, n, doc["n"] | n);
+        return true;
+    }
     if (doc["v"].is<JsonArray>()) {
         static GameRow games[GAMES_MAX];
         memset(games, 0, sizeof(games));
@@ -329,7 +344,7 @@ static void send_screenshot() {
 static void serial_show_screen(const char* name) {
     static const struct { const char* name; screen_t s; } SCREENS[] = {
         {"splash", SCREEN_SPLASH}, {"usage", SCREEN_USAGE}, {"agenda", SCREEN_AGENDA}, {"history", SCREEN_HISTORY},
-        {"routines", SCREEN_ROUTINES}, {"crypto", SCREEN_CRYPTO},
+        {"routines", SCREEN_ROUTINES}, {"posts", SCREEN_POSTS}, {"crypto", SCREEN_CRYPTO},
         {"stocks", SCREEN_STOCKS}, {"rates", SCREEN_RATES}, {"fiis", SCREEN_FIIS}, {"vasco", SCREEN_VASCO},
     };
     for (const auto& e : SCREENS) {
