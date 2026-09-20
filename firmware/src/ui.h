@@ -43,6 +43,10 @@ void ui_update_live(const LiveMatch* match);
 void ui_update_meeting(const char* title, const char* hhmm, int seconds, const char* where, bool joinable);
 void ui_meeting_join_ack(bool ok);   // daemon answer to "Começar"
 
+// Short message pushed by the Mac (autopost, scripts): balloon on the top
+// layer for 10 s, green border when ok, red when it failed.
+void ui_show_notice(const char* text, bool ok);
+
 void ui_tick_anim(void);
 void ui_show_screen(screen_t screen);
 void ui_toggle_splash(void);
