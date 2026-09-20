@@ -8,6 +8,7 @@ enum screen_t {
     SCREEN_AGENDA,
     SCREEN_HISTORY,
     SCREEN_ROUTINES,
+    SCREEN_POSTS,            // cronograma de posts: Instagram e TikTok
     SCREEN_CRYPTO,
     SCREEN_STOCKS,
     SCREEN_RATES,            // juros futuros (DI1)
@@ -33,6 +34,7 @@ void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, b
 // Daemon answer to a rerun request: ok = the LaunchAgent was started.
 void ui_rerun_ack(const char* name, bool ok);
 void ui_update_routines(const RoutineRow* rows, int offset, int count, int total);
+void ui_update_posts(const PostRow* rows, int offset, int count, int total);
 void ui_update_games(const GameRow* rows, int offset, int count, int total);
 void ui_update_kiro(int percent, int reset_days, int credits_used, int credit_limit);  // percent < 0 = hide
 void ui_update_live(const LiveMatch* match);
