@@ -6,7 +6,8 @@
    paginar nem de descartar itens no daemon ou no firmware. Cabeçalho e rodapé
    ficam fixos; arrastar rola e pausa a rotação; toque curto continua navegando
    (metade direita avança, esquerda volta); sem toque, a lista desliza sozinha
-   até o fim devagar (25 px/s) e a rotação espera a lista terminar. Com o dedo
+   até o fim devagar (25 px/s), descansa 2,5 s no fim e volta ao topo para deslizar de novo (nunca fica parada embaixo).
+   **Cada tela fica no mínimo 90 s** (`ROTATION` em `ui.cpp`); a rotação não espera mais a lista. Com o dedo
    encostado na tela a rotação nunca troca de tela. **Segurar o dedo parado no
    centro da tela por 2 s pausa a troca automática de telas** (aviso "Telas
    pausadas"); segurar de novo por 2 s volta a passar ("Telas passando").
