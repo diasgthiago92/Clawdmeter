@@ -31,7 +31,7 @@
    já usada, lida de `agy -p /quota` em `daemon/antigravity_quota.py`; painel **Gemini - Daily**: tokens de hoje
    em % do dia de maior uso dos últimos 30, pois o Antigravity não tem cota diária), e Consumo 24h.
    **Codex**: verde (`COL_CODEX`, `#10a37f`) como primária e branco como secundária. Painéis **Codex - Daily** (janela de 5 h) e **Codex - Weekly**: % de uso lido do `rate_limits` dos logs locais do Codex (`daemon/codex_usage.py`), com os tokens gastos na janela na linha de baixo.
-   Cores de dado (séries Claude × Kiro × Antigravity em Consumo 24h) são fixas.
+   Cores de dado (séries Claude × Kiro × Antigravity × Codex em Consumo 24h) são fixas.
 3. **O boneco do Kiro JAMAIS pode usar a camisa do Flamengo.** A única camisa de
    time permitida é a do Vasco (`kiro_vasco` em `tools/make_kiro_ghost.py`).
    **Fantasias do dia, sempre nos dois mascotes (Clawd e Kiro)** — o daemon manda
