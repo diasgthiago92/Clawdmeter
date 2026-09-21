@@ -292,16 +292,16 @@ static screen_t current_screen = SCREEN_USAGE;
 // not in the cycle — it only shows for a moment after boot or when tapped to.
 struct RotationStep { screen_t screen; uint32_t ms; };
 static const RotationStep ROTATION[] = {
-    {SCREEN_USAGE,   48000},   // 40%
-    {SCREEN_AGENDA,  12000},
-    {SCREEN_HISTORY, 12000},   // 10%
-    {SCREEN_ROUTINES, 12000},
-    {SCREEN_POSTS,   12000},
-    {SCREEN_CRYPTO,  24000},   // 20%
-    {SCREEN_STOCKS,  12000},   // 10%
-    {SCREEN_RATES,   12000},
-    {SCREEN_FIIS,    12000},
-    {SCREEN_VASCO,   12000},   // 10%
+    {SCREEN_USAGE,    90000},   // every screen stays at least 90 s
+    {SCREEN_AGENDA,   90000},
+    {SCREEN_HISTORY,  90000},
+    {SCREEN_ROUTINES, 90000},
+    {SCREEN_POSTS,    90000},
+    {SCREEN_CRYPTO,   90000},
+    {SCREEN_STOCKS,   90000},
+    {SCREEN_RATES,    90000},
+    {SCREEN_FIIS,     90000},
+    {SCREEN_VASCO,    90000},
 };
 #define ROTATION_COUNT        (sizeof(ROTATION) / sizeof(ROTATION[0]))
 #ifndef ROTATION_OFFCYCLE_MS
@@ -1057,9 +1057,18 @@ static bool scroll_list_tick(ScrollList* l) {
         l->glide_ms = now;
         return max_y > cur;
     }
-    if (cur >= max_y) {
+    // End = nothing left below the viewport (the computed max_y can overshoot the real one).
+    if (max_y <= 0) return false;
+    if (cur >= max_y || lv_obj_get_scroll_bottom(l->box) <= 0) {
         if (!l->end_ms) l->end_ms = now;
-        return now - l->end_ms < LIST_END_HOLD_MS && max_y > 0;
+        if (now - l->end_ms < LIST_END_HOLD_MS) return true;
+        // Rested at the bottom: jump back to the top and glide again, never frozen there.
+        lv_obj_scroll_to_y(l->box, 0, LV_ANIM_ON);
+        l->shown_ms = now;
+        l->glide_ms = now;
+        l->glide_acc = 0;
+        l->end_ms = 0;
+        return true;
     }
     l->glide_acc += (now - l->glide_ms) * LIST_GLIDE_PX_S;
     l->glide_ms = now;
@@ -2784,7 +2793,6 @@ static void rotation_tick(void) {
     }
     if (rotation_locked) return;              // paused by a 2 s hold; taps still navigate
     if (now - screen_shown_ms < rotation_dwell_ms(current_screen)) return;
-    if (list_gliding) return;                 // let a slow list finish before moving on
     size_t next = 0;
     for (size_t i = 0; i < ROTATION_COUNT; i++) {
         if (ROTATION[i].screen == current_screen) { next = (i + 1) % ROTATION_COUNT; break; }
