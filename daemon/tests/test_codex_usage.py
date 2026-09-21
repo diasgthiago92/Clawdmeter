@@ -68,6 +68,20 @@ class CodexUsageTest(unittest.TestCase):
             self.assertEqual(payload["cxd"][2], 1300 - 500)
             self.assertEqual(payload["cxw"][2], 1300 - 500)
 
+    def test_hourly_tokens(self):
+        def line(ts, total):
+            return json.dumps({"timestamp": ts, "payload": {"type": "token_count",
+                "info": {"total_token_usage": {"total_tokens": total}}}})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rollout-h.jsonl"
+            path.write_text("\n".join([
+                line("1970-01-01T00:10:00Z", 100),    # t=600, before the 2h window
+                line("1970-01-01T02:10:00Z", 400),    # t=7800 -> hour 0 of window starting at 7200
+                line("1970-01-01T03:10:00Z", 1000),   # t=11400 -> hour 1
+            ]) + "\n")
+            bins = CodexUsage([Path(tmp)]).hourly(14400, hours=2)
+            self.assertEqual(bins, [300, 600])
+
 
 if __name__ == "__main__":
     unittest.main()

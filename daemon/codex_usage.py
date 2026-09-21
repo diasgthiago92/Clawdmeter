@@ -157,6 +157,14 @@ class CodexUsage:
             return {}
         oldest = min(starts.values())
         out = dict.fromkeys(starts, 0)
+        for totals in self._all_totals(oldest):
+            for key, start in starts.items():
+                out[key] += _window_tokens(totals, start, now)
+        return out
+
+    def _all_totals(self, since: float) -> list[list[tuple[float, int]]]:
+        """Token counter series of every session file touched since `since` (cached by mtime)."""
+        result = []
         seen = set()
         for root in self.roots:
             if not root.exists():
@@ -164,7 +172,7 @@ class CodexUsage:
             for path in root.rglob("rollout-*.jsonl"):
                 try:
                     mtime = path.stat().st_mtime
-                    if mtime < oldest:
+                    if mtime < since:
                         continue
                     seen.add(path)
                     cached = self.cache.get(path)
@@ -173,10 +181,23 @@ class CodexUsage:
                         self.cache[path] = cached
                 except OSError:
                     continue
-                for key, start in starts.items():
-                    out[key] += _window_tokens(cached[1], start, now)
+                result.append(cached[1])
         self.cache = {p: c for p, c in self.cache.items() if p in seen}
-        return out
+        return result
+
+    def hourly(self, now: float, hours: int = 24) -> list[int]:
+        """Tokens per hour over the last `hours` hours, oldest first."""
+        start = now - hours * 3600
+        bins = [0] * hours
+        for totals in self._all_totals(start):
+            previous = 0
+            for stamp, total in totals:
+                if stamp >= start:
+                    i = int((stamp - start) // 3600)
+                    if 0 <= i < hours:
+                        bins[i] += max(0, total - previous)
+                previous = total
+        return bins
 
     def get(self, now: float | None = None) -> dict:
         now = time.time() if now is None else now

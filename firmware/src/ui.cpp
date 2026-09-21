@@ -224,6 +224,7 @@ static const char* accent_hex   = "d97757";
 static const char* const COL_HEX_KIRO   = "9046ff";
 #define COL_AG        lv_color_hex(0x64B5F6)   // Antigravity: light blue primary, white secondary
 static const char* const COL_HEX_AG     = "64b5f6";
+static const char* const COL_HEX_CODEX  = "10a37f";
 #define COL_CODEX     lv_color_hex(0x10A37F)   // Codex: green primary, white secondary
 
 // ---- Usage screen widgets (single non-splash view) ----
@@ -755,6 +756,9 @@ static lv_obj_t* history_container;
 static lv_obj_t* history_claude_bar[HISTORY_HOURS];
 static lv_obj_t* history_kiro_bar[HISTORY_HOURS];
 static lv_obj_t* history_ag_bar[HISTORY_HOURS];
+static lv_obj_t* history_codex_bar[HISTORY_HOURS];
+static lv_obj_t* lbl_history_codex;
+static lv_obj_t* lbl_history_codex_unit;
 static lv_obj_t* lbl_history_ag;
 static lv_obj_t* lbl_history_ag_unit;
 static int       history_plot_h = 0;
@@ -868,8 +872,11 @@ static void history_place_units(void) {
     const int y = lv_font_get_line_height(L.reset_font) - 2;
     lv_obj_align(lbl_history_now, LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_align(lbl_history_now_unit, LV_ALIGN_TOP_LEFT, 0, y);
-    lv_obj_align(lbl_history_ag, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_align(lbl_history_ag_unit, LV_ALIGN_TOP_MID, 0, y);
+    const int col = (L.content_w - 2 * L.panel_pad_x) / 7;   // Gemini and Codex sit either side of the center
+    lv_obj_align(lbl_history_ag, LV_ALIGN_TOP_MID, -col, 0);
+    lv_obj_align(lbl_history_ag_unit, LV_ALIGN_TOP_MID, -col, y);
+    lv_obj_align(lbl_history_codex, LV_ALIGN_TOP_MID, col, 0);
+    lv_obj_align(lbl_history_codex_unit, LV_ALIGN_TOP_MID, col, y);
     lv_obj_align(lbl_history_peak, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_obj_align(lbl_history_peak_unit, LV_ALIGN_TOP_RIGHT, 0, y);
 }
@@ -898,6 +905,16 @@ static void init_history_screen(lv_obj_t* scr) {
     lv_label_set_text(lbl_history_ag, "---");
     lv_obj_set_style_text_font(lbl_history_ag, L.reset_font, 0);
     lv_obj_set_style_text_color(lbl_history_ag, COL_AG, 0);
+
+    lbl_history_codex = lv_label_create(panel);
+    lv_label_set_text(lbl_history_codex, "---");
+    lv_obj_set_style_text_font(lbl_history_codex, L.reset_font, 0);
+    lv_obj_set_style_text_color(lbl_history_codex, COL_CODEX, 0);
+
+    lbl_history_codex_unit = lv_label_create(panel);
+    lv_label_set_text(lbl_history_codex_unit, "tokens");
+    lv_obj_set_style_text_font(lbl_history_codex_unit, L.axis_font, 0);
+    lv_obj_set_style_text_color(lbl_history_codex_unit, COL_TEXT, 0);
 
     lbl_history_ag_unit = lv_label_create(panel);
     lv_label_set_text(lbl_history_ag_unit, "tokens");
@@ -937,9 +954,9 @@ static void init_history_screen(lv_obj_t* scr) {
     const int bar_w = slot - slot / 4;
     const int left = (inner_w - slot * HISTORY_HOURS) / 2 + (slot - bar_w) / 2;
     for (int i = 0; i < HISTORY_HOURS; i++) {
-        for (int k = 0; k < 3; k++) {
+        for (int k = 0; k < 4; k++) {
             lv_obj_t* b = lv_obj_create(plot);
-            lv_obj_set_style_bg_color(b, k == 0 ? COL_ACCENT : k == 1 ? COL_KIRO : COL_AG, 0);
+            lv_obj_set_style_bg_color(b, k == 0 ? COL_ACCENT : k == 1 ? COL_KIRO : k == 2 ? COL_AG : COL_CODEX, 0);
             lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
             lv_obj_set_style_border_width(b, 0, 0);
             lv_obj_set_style_radius(b, 0, 0);
@@ -948,7 +965,7 @@ static void init_history_screen(lv_obj_t* scr) {
             lv_obj_set_pos(b, left + i * slot, pad + history_plot_h);
             lv_obj_set_size(b, bar_w, 0);
             lv_obj_add_flag(b, LV_OBJ_FLAG_HIDDEN);
-            (k == 0 ? history_claude_bar : k == 1 ? history_kiro_bar : history_ag_bar)[i] = b;
+            (k == 0 ? history_claude_bar : k == 1 ? history_kiro_bar : k == 2 ? history_ag_bar : history_codex_bar)[i] = b;
         }
     }
 
@@ -959,7 +976,7 @@ static void init_history_screen(lv_obj_t* scr) {
     lv_obj_align(a0, LV_ALIGN_BOTTOM_LEFT, 0, 0);
     lv_obj_t* legend = make_dim_label(panel, L.axis_font, "");
     lv_label_set_recolor(legend, true);
-    lv_label_set_text_fmt(legend, "#%s Claude#  #%s Gemini#  #%s Kiro#", COL_HEX_CLAUDE, COL_HEX_AG, COL_HEX_KIRO);
+    lv_label_set_text_fmt(legend, "#%s Claude#  #%s Gemini#  #%s Codex#  #%s Kiro#", COL_HEX_CLAUDE, COL_HEX_AG, COL_HEX_CODEX, COL_HEX_KIRO);
     lv_obj_align(legend, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_t* a2 = make_dim_label(panel, L.axis_font, "agora");
     lv_obj_align(a2, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
@@ -2363,20 +2380,20 @@ void ui_update_games(const GameRow* rows, int offset, int count, int total) {
 
 // {"hb": [claude, kiro], "tc": tokens, "tk": requests}: two 24-char base64
 // strings, each hour's segment already scaled so the tallest stack fills the plot.
-void ui_update_history_bars(const char* claude, const char* kiro, const char* ag,
-                            uint64_t tokens, float kiro_credits, uint64_t ag_tokens) {
+void ui_update_history_bars(const char* claude, const char* kiro, const char* ag, const char* codex,
+                            uint64_t tokens, float kiro_credits, uint64_t ag_tokens, uint64_t codex_tokens) {
     if (!lbl_history_now) return;
     static const char B64[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    const char* series[3] = {claude, ag, kiro};                 // stacked bottom to top
-    lv_obj_t** bars[3] = {history_claude_bar, history_ag_bar, history_kiro_bar};
-    const size_t len[3] = {strlen(claude), strlen(ag), strlen(kiro)};
+    const char* series[4] = {claude, ag, codex, kiro};          // stacked bottom to top
+    lv_obj_t** bars[4] = {history_claude_bar, history_ag_bar, history_codex_bar, history_kiro_bar};
+    const size_t len[4] = {strlen(claude), strlen(ag), strlen(codex), strlen(kiro)};
     const int bottom = 6 + history_plot_h;
     bool any = false;
     for (int i = 0; i < HISTORY_HOURS; i++) {
         int y = bottom;
         const int x = lv_obj_get_x(history_claude_bar[i]);
-        for (int k = 0; k < 3; k++) {
+        for (int k = 0; k < 4; k++) {
             const char* hit = i < (int)len[k] ? strchr(B64, series[k][i]) : nullptr;
             const int h = hit && *hit ? (int)(hit - B64) * history_plot_h / 63 : 0;
             lv_obj_set_size(bars[k][i], lv_obj_get_width(bars[k][i]), h);
@@ -2392,6 +2409,8 @@ void ui_update_history_bars(const char* claude, const char* kiro, const char* ag
     lv_label_set_text(lbl_history_now, buf);
     format_tokens(ag_tokens, buf, sizeof(buf));
     lv_label_set_text(lbl_history_ag, buf);
+    format_tokens(codex_tokens, buf, sizeof(buf));
+    lv_label_set_text(lbl_history_codex, buf);
     format_credits(kiro_credits, buf, sizeof(buf));
     lv_label_set_text(lbl_history_peak, buf);
     history_place_units();

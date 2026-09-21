@@ -751,11 +751,13 @@ class Session:
         try:
             config_dirs = read_config_dirs()
             claude_hourly = _MODEL_TALLY.hourly(config_dirs, now)
-            # Consumo 24h: stacked hourly bars, Claude tokens + Kiro requests + Antigravity tokens.
+            # Consumo 24h: stacked hourly bars, Claude tokens + Kiro requests + Antigravity tokens + Codex tokens.
             # Kiro: estimated credits (requests x average credits per request).
             cpr = credits_per_request()
-            extras.append({"hb": encode_stacked(claude_hourly, kiro_hourly, ag_hourly),
-                           "tc": sum(claude_hourly), "tk": round(sum(kiro_hourly) * cpr, 1), "ta": sum(ag_hourly)})
+            codex_hourly = _CODEX_USAGE.hourly(now, STACK_HOURS)
+            extras.append({"hb": encode_stacked(claude_hourly, kiro_hourly, ag_hourly, codex_hourly),
+                           "tc": sum(claude_hourly), "tk": round(sum(kiro_hourly) * cpr, 1), "ta": sum(ag_hourly),
+                           "tx": sum(codex_hourly)})
         except OSError as e:
             log(f"Model tally failed: {e}")
         extras.append(_KIRO.get(now))

@@ -133,8 +133,9 @@ static bool handle_extra_json(const char* json) {
     if (deserializeJson(doc, json)) return false;
 
     if (doc["hb"].is<JsonArray>()) {         // stacked hourly bars: Claude tokens + Kiro requests
-        ui_update_history_bars(doc["hb"][0] | "", doc["hb"][1] | "", doc["hb"][2] | "",
-                               doc["tc"] | (uint64_t)0, doc["tk"] | 0.0f, doc["ta"] | (uint64_t)0);
+        ui_update_history_bars(doc["hb"][0] | "", doc["hb"][1] | "", doc["hb"][2] | "", doc["hb"][3] | "",
+                               doc["tc"] | (uint64_t)0, doc["tk"] | 0.0f, doc["ta"] | (uint64_t)0,
+                               doc["tx"] | (uint64_t)0);
         return true;
     }
     if (doc["g"].is<JsonArray>()) {
