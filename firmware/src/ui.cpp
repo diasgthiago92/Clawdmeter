@@ -224,6 +224,7 @@ static const char* accent_hex   = "d97757";
 static const char* const COL_HEX_KIRO   = "9046ff";
 #define COL_AG        lv_color_hex(0x64B5F6)   // Antigravity: light blue primary, white secondary
 static const char* const COL_HEX_AG     = "64b5f6";
+#define COL_CODEX     lv_color_hex(0x10A37F)   // Codex: green primary, white secondary
 
 // ---- Usage screen widgets (single non-splash view) ----
 static lv_obj_t* usage_container;
@@ -566,15 +567,27 @@ static lv_obj_t* lbl_ag_day_pct;
 static lv_obj_t* lbl_ag_day_label;
 static lv_obj_t* bar_ag_day;
 static lv_obj_t* lbl_ag_day_reset;
+static lv_obj_t* panel_codex_day = nullptr;
+static lv_obj_t* lbl_codex_day_pct;
+static lv_obj_t* lbl_codex_day_label;
+static lv_obj_t* bar_codex_day;
+static lv_obj_t* lbl_codex_day_reset;
+static lv_obj_t* panel_codex_week = nullptr;
+static lv_obj_t* lbl_codex_week_pct;
+static lv_obj_t* lbl_codex_week_label;
+static lv_obj_t* bar_codex_week;
+static lv_obj_t* lbl_codex_week_reset;
 
 // Large layout: panels are sorted by usage %, highest on top. Ties and panels
 // without data (-1, at the bottom) keep the default order below.
-enum { UP_CLAUDE_WEEK, UP_KIRO, UP_AG_WEEK, UP_CLAUDE_DAY, UP_AG_DAY, UP_COUNT };
-static int usage_pct[UP_COUNT] = {-1, -1, -1, -1, -1};
+enum { UP_CLAUDE_WEEK, UP_KIRO, UP_AG_WEEK, UP_CLAUDE_DAY, UP_AG_DAY,
+       UP_CODEX_DAY, UP_CODEX_WEEK, UP_COUNT };
+static int usage_pct[UP_COUNT] = {-1, -1, -1, -1, -1, -1, -1};
 
 static void sort_usage_panels(void) {
     if (!L.kiro_panel) return;
-    lv_obj_t* panel[UP_COUNT] = {panel_weekly, panel_kiro, panel_ag, panel_session, panel_ag_day};
+    lv_obj_t* panel[UP_COUNT] = {panel_weekly, panel_kiro, panel_ag, panel_session, panel_ag_day,
+                                 panel_codex_day, panel_codex_week};
     int order[UP_COUNT];
     for (int i = 0; i < UP_COUNT; i++) {
         int j = i;
@@ -629,8 +642,7 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_clear_flag(usage_group, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(usage_group, LV_OBJ_FLAG_EVENT_BUBBLE);
 
-    // Large layout: Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily and
-    // Gemini Daily share a scrollable box (three visible at a time).
+    // Large layout: all provider quota panels share a scrollable box (three visible at a time).
     lv_obj_t* panels = usage_group;
     int py0 = L.content_y;
     const int row = L.usage_panel_h + L.usage_panel_gap;
@@ -685,6 +697,14 @@ static void init_usage_screen(lv_obj_t* scr) {
                          &lbl_ag_day_pct, &lbl_ag_day_label, &bar_ag_day, &lbl_ag_day_reset);
         lv_label_set_text(lbl_ag_day_pct, "---%");
         lv_label_set_text(lbl_ag_day_reset, "Sem uso do Gemini hoje");
+        panel_codex_day = make_usage_panel(panels, py0 + 5 * row, "Codex - Daily",
+                         &lbl_codex_day_pct, &lbl_codex_day_label, &bar_codex_day, &lbl_codex_day_reset);
+        lv_label_set_text(lbl_codex_day_pct, "---%");
+        lv_label_set_text(lbl_codex_day_reset, "Sem dados do Codex");
+        panel_codex_week = make_usage_panel(panels, py0 + 6 * row, "Codex - Weekly",
+                         &lbl_codex_week_pct, &lbl_codex_week_label, &bar_codex_week, &lbl_codex_week_reset);
+        lv_label_set_text(lbl_codex_week_pct, "---%");
+        lv_label_set_text(lbl_codex_week_reset, "Sem dados do Codex");
     }
 
     // Brand colors: the number and bar in the tool's primary color, text in white.
@@ -701,6 +721,14 @@ static void init_usage_screen(lv_obj_t* scr) {
         lv_obj_set_style_text_color(lbl_ag_day_pct, COL_AG, 0);
         lv_obj_set_style_text_color(lbl_ag_day_reset, COL_TEXT, 0);
         lv_obj_set_style_bg_color(bar_ag_day, COL_AG, LV_PART_INDICATOR);
+    }
+    if (panel_codex_day) {
+        lv_obj_set_style_text_color(lbl_codex_day_pct, COL_CODEX, 0);
+        lv_obj_set_style_text_color(lbl_codex_day_reset, COL_TEXT, 0);
+        lv_obj_set_style_bg_color(bar_codex_day, COL_CODEX, LV_PART_INDICATOR);
+        lv_obj_set_style_text_color(lbl_codex_week_pct, COL_CODEX, 0);
+        lv_obj_set_style_text_color(lbl_codex_week_reset, COL_TEXT, 0);
+        lv_obj_set_style_bg_color(bar_codex_week, COL_CODEX, LV_PART_INDICATOR);
     }
     if (panel_kiro) {
         lv_obj_set_style_text_color(lbl_kiro_pct, COL_KIRO, 0);
@@ -1030,7 +1058,7 @@ static ScrollList usage_list;
 
 static lv_obj_t* make_usage_scroll_box(lv_obj_t* parent, int y, int w, int visible_rows, int row_h) {
     lv_obj_t* box = scroll_list_create(&usage_list, parent, 0, y, w, visible_rows, row_h);
-    usage_list.rows = 5;
+    usage_list.rows = 7;
     return box;
 }
 
@@ -1067,6 +1095,35 @@ void ui_update_antigravity_daily(uint64_t tokens_today, int pct_of_peak, int res
     format_tokens(tokens_today, buf, sizeof(buf));
     lv_label_set_text_fmt(lbl_ag_day_reset, "%s tokens hoje \xC2\xB7 %d %s",
                           buf, responses, responses == 1 ? "resposta" : "respostas");
+}
+
+static void update_codex_panel(int which, lv_obj_t* pct_label, lv_obj_t* bar,
+                               lv_obj_t* reset_label, int used_pct, int reset_mins, uint64_t tokens) {
+    set_usage_pct(which, used_pct < 0 ? -1 : used_pct);
+    if (used_pct < 0) {
+        lv_label_set_text(pct_label, "---%");
+        lv_bar_set_value(bar, 0, LV_ANIM_ON);
+        lv_label_set_text(reset_label, "Sem dados do Codex");
+        return;
+    }
+    char buf[48], tok[16];
+    lv_label_set_text_fmt(pct_label, "%d%%", used_pct);
+    lv_bar_set_value(bar, used_pct, LV_ANIM_ON);
+    format_reset_time(reset_mins, buf, sizeof(buf));
+    format_tokens(tokens, tok, sizeof(tok));
+    lv_label_set_text_fmt(reset_label, "%s \xC2\xB7 %s tokens", buf, tok);
+}
+
+void ui_update_codex_daily(int used_pct, int reset_mins, uint64_t tokens) {
+    if (!panel_codex_day) return;
+    update_codex_panel(UP_CODEX_DAY, lbl_codex_day_pct, bar_codex_day,
+                       lbl_codex_day_reset, used_pct, reset_mins, tokens);
+}
+
+void ui_update_codex_weekly(int used_pct, int reset_mins, uint64_t tokens) {
+    if (!panel_codex_week) return;
+    update_codex_panel(UP_CODEX_WEEK, lbl_codex_week_pct, bar_codex_week,
+                       lbl_codex_week_reset, used_pct, reset_mins, tokens);
 }
 
 // Crypto and B3 screens share one table: 3 text cells + a colored change cell.

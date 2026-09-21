@@ -222,6 +222,13 @@ static bool handle_extra_json(const char* json) {
         ui_update_antigravity_daily(doc["ag"][0] | (uint64_t)0, doc["ag"][1] | 0, doc["ag"][2] | 0);
         return true;
     }
+    if (doc["cxd"].is<JsonArray>() || doc["cxw"].is<JsonArray>()) {
+        if (doc["cxd"].is<JsonArray>())       // Codex 5h window: [used %, minutes to reset, tokens]
+            ui_update_codex_daily(doc["cxd"][0] | -1, doc["cxd"][1] | -1, doc["cxd"][2] | (uint64_t)0);
+        if (doc["cxw"].is<JsonArray>())       // Codex weekly window: [used %, minutes to reset, tokens]
+            ui_update_codex_weekly(doc["cxw"][0] | -1, doc["cxw"][1] | -1, doc["cxw"][2] | (uint64_t)0);
+        return true;
+    }
     if (doc["pb"].is<JsonArray>()) {         // mouse / keyboard battery %, -1 = unknown
         ui_update_peripherals(doc["pb"][0] | -1, doc["pb"][1] | -1);
         return true;

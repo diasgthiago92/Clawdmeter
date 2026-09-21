@@ -22,7 +22,7 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
 
 ## Telas (ordem de toque: direita avança, esquerda volta)
 Segurar o dedo no centro por 2 s pausa/retoma a troca automática de telas; depois de 1 h pausado, retoma sozinho (16/09/2026).
-Clawd (tela inicial) → **Consumo Atual** (painéis ordenados pelo % de uso, maior no topo; empate/sem dados segue Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily, Gemini Daily; só desliza sozinha se algum painel escondido tiver uso > 0%) →
+Clawd (tela inicial) → **Consumo Atual** (painéis ordenados pelo % de uso, maior no topo; empate/sem dados segue Claude Weekly, Kiro Monthly, Gemini Weekly, Claude Daily, Gemini Daily, Codex Daily, Codex Weekly; só desliza sozinha se algum painel escondido tiver uso > 0%) →
 **Agenda de Hoje** → **Consumo - 24 horas** (barras Claude/Gemini/Kiro) → **Rotinas Automáticas** → **Cronograma** (posts do Instagram e do TikTok) →
 **Criptomoedas** → **Bovespa** (38 ações, P/VP) → **Juros Futuros** (curva DI1 inteira num gráfico, hoje × ajuste anterior; rodapé com o vencimento mais curto e o mais longo) → **Fundos Imobiliários** (30 FIIs) → **Jogos do Vasco**.
 Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; botão "Começar" abre o link Meet/Zoom/Teams no Mac via `{"mg":1}`), **Rotina falhou** (vermelha, botão
