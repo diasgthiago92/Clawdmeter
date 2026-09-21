@@ -28,6 +28,7 @@ from bleak.exc import BleakError
 from market_quotes import CryptoQuotes, FiiQuotes, RateQuotes, StockQuotes
 from antigravity_quota import AntigravityQuota
 from antigravity_usage import AntigravityUsage
+from codex_usage import CodexUsage
 from costumes import costume_for
 from google_agenda import GoogleAgenda
 from kiro_routines import KiroRoutines, rerun
@@ -569,6 +570,7 @@ _ROUTINES = KiroRoutines()
 _POSTS = PostsSchedule()
 _ANTIGRAVITY = AntigravityUsage()
 _AG_QUOTA = AntigravityQuota()
+_CODEX_USAGE = CodexUsage()
 _AGENDA = GoogleAgenda()
 EXTRA_WRITE_GAP_S = 0.4
 NOTICE_WRITE_GAP_S = 2.0   # avisos em sequência: buffer RX único + tempo de leitura
@@ -744,6 +746,8 @@ class Session:
             log(f"Antigravity usage unavailable: {e}")
         # Gemini - Weekly panel: weekly quota of the Gemini models group (agy /quota).
         extras.append(await _AG_QUOTA.get(now))
+        # Codex rate limits: local JSONL session tails only (no network access).
+        extras.append(_CODEX_USAGE.get(now))
         try:
             config_dirs = read_config_dirs()
             claude_hourly = _MODEL_TALLY.hourly(config_dirs, now)
