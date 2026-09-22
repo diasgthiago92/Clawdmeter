@@ -1826,13 +1826,14 @@ static void render_routines(void) {
                 strcmp(routines_new_name[i], row.name) == 0) fresh = true;
         }
         if (fresh)
-            used[0] += snprintf(text[0] + used[0], sizeof(text[0]) - used[0], "%s#%s %s#", sep, COL_HEX_KIRO, row.name);
+            used[0] += snprintf(text[0] + used[0], sizeof(text[0]) - used[0], "%s#%s %s#", sep, row.codex ? COL_HEX_CODEX : COL_HEX_KIRO, row.name);
         else
             used[0] += snprintf(text[0] + used[0], sizeof(text[0]) - used[0], "%s%s", sep, row.name);
         used[1] += snprintf(text[1] + used[1], sizeof(text[1]) - used[1], "%s%s", sep, row.time);
         used[2] += snprintf(text[2] + used[2], sizeof(text[2]) - used[2], "%s%d\xC3\x97", sep, row.runs);
         used[3] += snprintf(text[3] + used[3], sizeof(text[3]) - used[3], "%s#%s %s#", sep,
-                            row.ok ? COL_HEX_KIRO : COL_HEX_RED, row.ok ? "ok" : "erro");
+                            row.ok ? (row.codex ? COL_HEX_CODEX : COL_HEX_KIRO) : COL_HEX_RED,
+                            row.status == 2 ? "exec" : row.status == 3 ? "11h" : row.ok ? "ok" : "erro");
     }
     for (int c = 0; c < 4; c++) {
         text[c][used[c] < sizeof(text[c]) ? used[c] : sizeof(text[c]) - 1] = '\0';
@@ -1855,7 +1856,8 @@ void ui_update_routines(const RoutineRow* rows, int offset, int count, int total
         // A new run (different latest time, or a routine not listed before) gets highlighted.
         bool is_new = true;
         for (int j = 0; j < ROUTINES_MAX; j++) {
-            if (strcmp(routines[j].name, rows[i].name) == 0 && strcmp(routines[j].time, rows[i].time) == 0) {
+            if (strcmp(routines[j].name, rows[i].name) == 0 && strcmp(routines[j].time, rows[i].time) == 0 &&
+                routines[j].status == rows[i].status) {
                 is_new = false;
                 break;
             }
