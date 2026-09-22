@@ -466,6 +466,13 @@ void setup() {
     ui_update_ble_status(ble_get_state(), ble_get_device_name(), ble_get_mac_address());
     ui_update_battery(power_hal_battery_pct(), power_hal_is_charging());
     ui_show_screen(SCREEN_SPLASH);
+#ifdef BOARD_SIM
+    // Sim-only: SIM_START_SCREEN=<enum int> pins a screen at boot for headless
+    // autoshots. No effect on hardware (guard) or when the env is unset.
+    if (const char* ss = getenv("SIM_START_SCREEN")) {
+        ui_show_screen((screen_t)atoi(ss));
+    }
+#endif
 
     Serial.printf("Dashboard ready (%s, %dx%d), waiting for data on BLE...\n",
         board_caps().name, W, H);

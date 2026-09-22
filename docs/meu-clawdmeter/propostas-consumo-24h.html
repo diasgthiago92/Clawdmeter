@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Clawdmeter · Propostas Consumo 24 horas</title>
+<style>
+  :root{
+    --bg:#000;--panel:#1f1f1e;--panel2:#141417;--text:#faf9f5;--dim:#b0aea5;
+    --claude:#d97757;--kiro:#9046ff;--gemini:#64b5f6;--codex:#10a37f;--barbg:#2a2a28;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#111;color:#fff;font-family:"Segoe UI",Inter,system-ui,sans-serif;padding:32px;display:flex;flex-wrap:wrap;gap:44px;justify-content:center}
+  .item{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .cap{max-width:480px;color:#bbb;font-size:13px;line-height:1.55;text-align:center}
+  .cap b{color:#fff}
+  .dev{width:480px;height:480px;background:var(--bg);border-radius:44px;border:10px solid #1b1b22;
+       box-shadow:0 0 0 1px #2e2e38, 0 20px 60px rgba(0,0,0,.6);position:relative;overflow:hidden;
+       font-family:"Segoe UI",Inter,system-ui,sans-serif}
+  .title{position:absolute;left:104px;top:34px;font-family:Georgia,"Tiempos",serif;font-size:33px;color:#fff;white-space:nowrap}
+  .ghost{position:absolute;left:20px;top:30px;width:64px;height:52px;image-rendering:pixelated}
+  .batt{position:absolute;right:20px;top:30px;font-size:14px;color:#cfcfd4}
+  h3{width:100%;color:#fff;font-size:20px;margin:6px 0 -22px;text-align:center}
+  .subttl{width:100%;max-width:520px;color:#9a9aa2;font-size:13px;text-align:center;margin:-6px 0 6px}
+</style></head><body>
+
+<div class="subttl" style="margin-top:0">
+  Tela <b style="color:#fff">Consumo - 24 horas</b> · 3 versões para escolher.
+  Dados de exemplo (Claude 90,1 mi · Gemini 0 · Kiro 4,5 créd.). Cores oficiais: Claude laranja, Gemini azul, Codex verde, Kiro roxo.
+</div>
+
+<h3>Versão 1 — Área empilhada + resumo lateral</h3>
+<div class="item">
+<div class="dev" id="V1"></div>
+<div class="cap"><b>Curva no lugar das barras.</b> As 24 horas viram uma área empilhada suave (Claude sobre Kiro sobre Gemini), com marcador vertical na hora de pico. À direita, um resumo compacto: pico do dia, hora mais ativa e total de créditos. Mostra o <i>ritmo</i> do dia melhor que barras isoladas.</div>
+</div>
+
+<h3>Versão 2 — Barras agrupadas por bloco de 3h + destaque de pico</h3>
+<div class="item">
+<div class="dev" id="V2"></div>
+<div class="cap"><b>Menos ruído, mais leitura.</b> Agrupa as 24 h em 8 blocos de 3 h. Cada bloco é uma barra empilhada mais larga e legível a 4" de distância. O bloco de maior consumo ganha um rótulo com o total. Header em duas linhas: tokens (Claude+Gemini) e créditos Kiro.</div>
+</div>
+
+<h3>Versão 3 — Timeline vertical por provedor (sparklines)</h3>
+<div class="item">
+<div class="dev" id="V3"></div>
+<div class="cap"><b>Uma faixa por IA.</b> Cada provedor tem sua linha do tempo horizontal (sparkline de 24 h) com nome, cor, total do dia e hora de pico. Separa quem consumiu o quê — bom quando Claude e Kiro disputam o gráfico. Gemini/Codex aparecem mesmo zerados.</div>
+</div>
+
+<div class="subttl" style="margin-top:24px">
+  Variações da Versão 3 <b style="color:#fff">com barras empilhadas</b> (as 4 IAs somadas na mesma barra).
+</div>
+
+<h3>Versão 4 — Cards por período do dia (barra empilhada horizontal)</h3>
+<div class="item">
+<div class="dev" id="V4"></div>
+<div class="cap"><b>Faixa por período (madrugada/manhã/tarde/noite).</b> Cada card traz uma barra horizontal empilhada com o mix de IAs daquele período e o total à direita. Mostra <i>quando</i> o dia consumiu mais, com o mix num relance. As 4 IAs sempre aparecem na legenda.</div>
+</div>
+
+<h3>Versão 5 — Gráfico único de 24 barras empilhadas + resumo por IA</h3>
+<div class="item">
+<div class="dev" id="V5"></div>
+<div class="cap"><b>Um card grande + faixa de totais.</b> O card superior tem as 24 h como barras verticais empilhadas (Claude+Kiro+Gemini+Codex por hora). Abaixo, uma faixa compacta com o total de cada IA na cor dela. Mantém o layout de cards empilhados da V3, mas com o gráfico empilhado de verdade.</div>
+</div>
+
+<h3>Versão 6 — Cards por bloco de 6h (mini-empilhado)</h3>
+<div class="item">
+<div class="dev" id="V6"></div>
+<div class="cap"><b>4 blocos de 6 horas.</b> Cada card é um trecho de 6 h com 3 barras empilhadas (2 h cada) e o total do bloco. Menos barras que 24, mais legível a 4", e ainda mostra o mix de IAs empilhado dentro de cada bloco.</div>
+</div>
+
+<script>
+const C={claude:'#d97757',kiro:'#9046ff',gemini:'#64b5f6',codex:'#10a37f',dim:'#b0aea5',barbg:'#2a2a28',panel:'#1f1f1e',panel2:'#141417',text:'#faf9f5'};
+
+// 24h de dados de exemplo (tokens em milhares), coerentes com a captura real:
+// Claude domina, Kiro tem um pico forte no começo da janela, Gemini/Codex baixos.
+const claude = [0,0,0,0,0,0,0,0,0,0,8,14,0,0,0,0,0,0,0,0,26,34,40,58];
+const kiro   = [0,0,0,0,0,0,0,0,0,0,52,10,0,0,0,0,0,0,0,0,0,0,0,0];
+const gemini = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+const codex  = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+const HOURS=24;
+const totals = claude.map((_,i)=>claude[i]+kiro[i]+gemini[i]+codex[i]);
+const peakIdx = totals.indexOf(Math.max(...totals));
+const maxStack = Math.max(...totals,1);
+const clawdStill = 'data:image/svg+xml,'+encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 13' shape-rendering='crispEdges'>"+
+  "<rect width='16' height='13' fill='none'/>"+
+  "<rect x='2' y='1' width='12' height='9' rx='2' fill='#e9e7e0'/>"+
+  "<rect x='4' y='3' width='3' height='3' fill='#1a1a1a'/><rect x='9' y='3' width='3' height='3' fill='#1a1a1a'/>"+
+  "<rect x='3' y='7' width='10' height='2' fill='#d97757'/>"+
+  "<rect x='1' y='10' width='3' height='2' fill='#e9e7e0'/><rect x='12' y='10' width='3' height='2' fill='#e9e7e0'/></svg>");
+
+function head(el,title){
+  el.innerHTML=`<img class="ghost" src="${clawdStill}" alt=""><div class="title">${title}</div><div class="batt">🖱65% ⌨94%</div>`;
+}
+function panel(el,{top=96,bottom=22,left=16,right=16,radius=18,bg=C.panel}={}){
+  const p=document.createElement('div');
+  p.style.cssText=`position:absolute;left:${left}px;right:${right}px;top:${top}px;bottom:${bottom}px;background:${bg};border-radius:${radius}px;overflow:hidden`;
+  el.appendChild(p);return p;
+}
+function bignum(n,color){return `<span style="font-size:34px;font-weight:700;color:${color};line-height:1">${n}</span>`;}
+
+// ---------------- Versão 1 — área empilhada + resumo lateral ----------------
+(function(){
+  const el=document.getElementById('V1');head(el,'Consumo - 24 horas');
+  const p=panel(el);
+  const W=448-24, plotW=W*0.66, plotH=248, ox=16, oy=150;
+  // header
+  const hd=document.createElement('div');
+  hd.style.cssText='position:absolute;left:16px;top:14px;display:flex;gap:26px;align-items:baseline';
+  hd.innerHTML=`
+    <div>${bignum('90,1',C.claude)}<div style="font-size:12px;color:${C.text}">tokens</div></div>
+    <div>${bignum('0',C.gemini)}<div style="font-size:12px;color:${C.text}">tokens</div></div>
+    <div>${bignum('4,5',C.kiro)}<div style="font-size:12px;color:${C.text}">créditos (est.)</div></div>`;
+  p.appendChild(hd);
+  // SVG área empilhada
+  const svgNS='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(svgNS,'svg');
+  svg.setAttribute('width',plotW);svg.setAttribute('height',plotH);
+  svg.style.cssText=`position:absolute;left:${ox}px;top:${oy-96}px`;
+  const xt=i=>i/(HOURS-1)*plotW;
+  const yt=v=>plotH-6-(v/maxStack)*(plotH-16);
+  // camadas cumulativas: gemini(base)+kiro+claude
+  const base=gemini.map((g,i)=>g);
+  const lvl1=base.map((b,i)=>b+kiro[i]);
+  const lvl2=lvl1.map((b,i)=>b+claude[i]);
+  function areaPath(lower,upper){
+    let d='M'+xt(0)+','+yt(lower[0]);
+    for(let i=1;i<HOURS;i++)d+=' L'+xt(i)+','+yt(lower[i]);
+    for(let i=HOURS-1;i>=0;i--)d+=' L'+xt(i)+','+yt(upper[i]);
+    return d+'Z';
+  }
+  const zeros=new Array(HOURS).fill(0);
+  [['#'+'',C.gemini,zeros,base],['',C.kiro,base,lvl1],['',C.claude,lvl1,lvl2]].forEach(([_,col,lo,hi])=>{
+    const path=document.createElementNS(svgNS,'path');
+    path.setAttribute('d',areaPath(lo,hi));
+    path.setAttribute('fill',col);path.setAttribute('fill-opacity','.85');
+    svg.appendChild(path);
+  });
+  // marcador de pico
+  const line=document.createElementNS(svgNS,'line');
+  line.setAttribute('x1',xt(peakIdx));line.setAttribute('x2',xt(peakIdx));
+  line.setAttribute('y1',0);line.setAttribute('y2',plotH);
+  line.setAttribute('stroke','#ffffff');line.setAttribute('stroke-opacity','.35');line.setAttribute('stroke-dasharray','3 3');
+  svg.appendChild(line);
+  p.appendChild(svg);
+  // eixo
+  const ax=document.createElement('div');
+  ax.style.cssText=`position:absolute;left:${ox}px;width:${plotW}px;top:${oy-96+plotH+2}px;display:flex;justify-content:space-between;font-size:12px;color:${C.dim}`;
+  ax.innerHTML='<span>-24h</span><span>agora</span>';p.appendChild(ax);
+  // resumo lateral
+  const side=document.createElement('div');
+  side.style.cssText=`position:absolute;right:14px;top:${oy-96}px;width:${W-plotW-24}px;display:flex;flex-direction:column;gap:14px`;
+  side.innerHTML=`
+    <div><div style="font-size:11px;color:${C.dim}">PICO</div><div style="font-size:22px;font-weight:700;color:${C.claude}">58 mil</div><div style="font-size:11px;color:${C.dim}">na última hora</div></div>
+    <div><div style="font-size:11px;color:${C.dim}">MAIS ATIVO</div><div style="font-size:22px;font-weight:700;color:${C.text}">agora</div><div style="font-size:11px;color:${C.dim}">Claude</div></div>
+    <div><div style="font-size:11px;color:${C.dim}">KIRO</div><div style="font-size:22px;font-weight:700;color:${C.kiro}">4,5</div><div style="font-size:11px;color:${C.dim}">créditos (est.)</div></div>`;
+  p.appendChild(side);
+  // legenda
+  const lg=document.createElement('div');
+  lg.style.cssText=`position:absolute;left:16px;right:16px;bottom:10px;display:flex;gap:16px;justify-content:center;font-size:12px;color:${C.dim}`;
+  lg.innerHTML=`<span style="color:${C.claude}">Claude</span><span style="color:${C.gemini}">Gemini</span><span style="color:${C.codex}">Codex</span><span style="color:${C.kiro}">Kiro</span>`;
+  p.appendChild(lg);
+})();
+
+// ---------------- Versão 2 — blocos de 3h ----------------
+(function(){
+  const el=document.getElementById('V2');head(el,'Consumo - 24 horas');
+  const p=panel(el);
+  // header em 2 grupos
+  const hd=document.createElement('div');
+  hd.style.cssText='position:absolute;left:18px;right:18px;top:14px;display:flex;justify-content:space-between;align-items:baseline';
+  hd.innerHTML=`
+    <div style="display:flex;gap:22px;align-items:baseline">
+      <div>${bignum('90,1',C.claude)}<div style="font-size:12px;color:${C.text}">tokens</div></div>
+      <div>${bignum('0',C.gemini)}<div style="font-size:12px;color:${C.text}">tokens</div></div>
+    </div>
+    <div style="text-align:right">${bignum('4,5',C.kiro)}<div style="font-size:12px;color:${C.text}">créditos (est.)</div></div>`;
+  p.appendChild(hd);
+  // agrupa em 8 blocos de 3h
+  const blocks=[];
+  for(let b=0;b<8;b++){
+    let cl=0,ki=0,ge=0,co=0;
+    for(let j=0;j<3;j++){const i=b*3+j;cl+=claude[i];ki+=kiro[i];ge+=gemini[i];co+=codex[i];}
+    blocks.push({cl,ki,ge,co,tot:cl+ki+ge+co});
+  }
+  const maxB=Math.max(...blocks.map(b=>b.tot),1);
+  const peakB=blocks.reduce((m,b,i)=>b.tot>blocks[m].tot?i:m,0);
+  const chart=document.createElement('div');
+  chart.style.cssText='position:absolute;left:16px;right:16px;top:104px;bottom:44px;display:flex;align-items:flex-end;gap:8px';
+  blocks.forEach((b,i)=>{
+    const col=document.createElement('div');
+    col.style.cssText='flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%';
+    const h=b.tot/maxB*100;
+    const seg=(v,color)=>v>0?`<div style="width:100%;height:${v/maxB*100}%;background:${color}"></div>`:'';
+    const lbl=i===peakB?`<div style="font-size:12px;font-weight:700;color:${C.text};margin-bottom:3px">${b.tot} mil</div>`:'';
+    col.innerHTML=`${lbl}
+      <div style="width:100%;max-width:34px;height:${h}%;min-height:${b.tot>0?4:0}px;border-radius:5px 5px 0 0;overflow:hidden;display:flex;flex-direction:column-reverse;background:${b.tot>0?'transparent':C.barbg}">
+        ${seg(b.cl,C.claude)}${seg(b.ki,C.kiro)}${seg(b.ge,C.gemini)}${seg(b.co,C.codex)}
+      </div>`;
+    chart.appendChild(col);
+  });
+  p.appendChild(chart);
+  const ax=document.createElement('div');
+  ax.style.cssText=`position:absolute;left:16px;right:16px;bottom:26px;display:flex;justify-content:space-between;font-size:12px;color:${C.dim}`;
+  ax.innerHTML='<span>-24h</span><span>agora</span>';p.appendChild(ax);
+  const lg=document.createElement('div');
+  lg.style.cssText=`position:absolute;left:16px;right:16px;bottom:8px;display:flex;gap:16px;justify-content:center;font-size:12px;color:${C.dim}`;
+  lg.innerHTML=`<span style="color:${C.claude}">Claude</span><span style="color:${C.gemini}">Gemini</span><span style="color:${C.codex}">Codex</span><span style="color:${C.kiro}">Kiro</span>`;
+  p.appendChild(lg);
+})();
+
+// ---------------- Versão 3 — timeline por provedor ----------------
+(function(){
+  const el=document.getElementById('V3');head(el,'Consumo - 24 horas');
+  const p=panel(el);
+  const rows=[
+    {n:'Claude',c:C.claude,d:claude,tot:'90,1 mi',peak:'agora'},
+    {n:'Kiro',  c:C.kiro,  d:kiro,  tot:'4,5 créd.',peak:'-14h'},
+    {n:'Gemini',c:C.gemini,d:gemini,tot:'0',peak:'—'},
+    {n:'Codex', c:C.codex, d:codex, tot:'0',peak:'—'},
+  ];
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;left:14px;right:14px;top:14px;bottom:14px;display:flex;flex-direction:column;gap:12px';
+  rows.forEach(r=>{
+    const max=Math.max(...r.d,1);
+    const bars=r.d.map(v=>`<div style="flex:1;height:${v>0?Math.max(v/max*100,8):3}%;background:${v>0?r.c:C.barbg};border-radius:2px 2px 0 0;align-self:flex-end;opacity:${v>0?1:.5}"></div>`).join('');
+    const row=document.createElement('div');
+    row.style.cssText=`flex:1;background:${C.panel2};border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:6px`;
+    row.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:17px;font-weight:700;color:${r.c}">${r.n}</span>
+        <span style="font-size:15px;font-weight:700;color:${C.text}">${r.tot}<span style="font-size:11px;color:${C.dim};font-weight:400"> · pico ${r.peak}</span></span>
+      </div>
+      <div style="flex:1;display:flex;align-items:flex-end;gap:2px;min-height:26px">${bars}</div>`;
+    wrap.appendChild(row);
+  });
+  p.appendChild(wrap);
+})();
+
+// Helpers para as variações empilhadas ------------------------------------
+const SERIES=[['cl',C.claude,'Claude'],['ki',C.kiro,'Kiro'],['ge',C.gemini,'Gemini'],['co',C.codex,'Codex']];
+function bucket(range){ // soma cada série num intervalo [a,b)
+  let o={cl:0,ki:0,ge:0,co:0};
+  for(let i=range[0];i<range[1];i++){o.cl+=claude[i];o.ki+=kiro[i];o.ge+=gemini[i];o.co+=codex[i];}
+  o.tot=o.cl+o.ki+o.ge+o.co;return o;
+}
+function legendBar(){
+  const lg=document.createElement('div');
+  lg.style.cssText=`position:absolute;left:16px;right:16px;bottom:8px;display:flex;gap:16px;justify-content:center;font-size:12px;color:${C.dim}`;
+  lg.innerHTML=SERIES.map(([k,c,n])=>`<span style="color:${c}">${n}</span>`).join('');
+  return lg;
+}
+
+// ---------------- Versão 4 — cards por período (barra horizontal empilhada) --
+(function(){
+  const el=document.getElementById('V4');head(el,'Consumo - 24 horas');
+  const p=panel(el,{bottom:32});
+  const periods=[
+    {n:'Madrugada',sub:'00–06',b:bucket([0,6])},
+    {n:'Manhã',    sub:'06–12',b:bucket([6,12])},
+    {n:'Tarde',    sub:'12–18',b:bucket([12,18])},
+    {n:'Noite',    sub:'18–24',b:bucket([18,24])},
+  ];
+  const maxP=Math.max(...periods.map(x=>x.b.tot),1);
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;left:14px;right:14px;top:14px;bottom:36px;display:flex;flex-direction:column;gap:12px';
+  periods.forEach(pd=>{
+    const totLbl=pd.b.tot>0?(pd.n==='Noite'?'4,5 créd.':pd.b.tot+' mil'):'0';
+    const seg=SERIES.map(([k,c])=>pd.b[k]>0?`<div style="width:${pd.b[k]/maxP*100}%;background:${c}"></div>`:'').join('');
+    const row=document.createElement('div');
+    row.style.cssText=`flex:1;background:${C.panel2};border-radius:14px;padding:12px 16px;display:flex;flex-direction:column;gap:8px;justify-content:center`;
+    row.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:16px;font-weight:700;color:${C.text}">${pd.n} <span style="font-size:12px;color:${C.dim};font-weight:400">${pd.sub}</span></span>
+        <span style="font-size:15px;font-weight:700;color:${C.text}">${totLbl}</span>
+      </div>
+      <div style="height:14px;background:${C.barbg};border-radius:7px;overflow:hidden;display:flex">${seg||''}</div>`;
+    wrap.appendChild(row);
+  });
+  p.appendChild(wrap);p.appendChild(legendBar());
+})();
+
+// ---------------- Versão 5 — 24 barras empilhadas + faixa de totais ----------
+(function(){
+  const el=document.getElementById('V5');head(el,'Consumo - 24 horas');
+  const p=panel(el,{bottom:14});
+  const maxStack=Math.max(...claude.map((_,i)=>claude[i]+kiro[i]+gemini[i]+codex[i]),1);
+  // card do gráfico
+  const chartCard=document.createElement('div');
+  chartCard.style.cssText=`position:absolute;left:14px;right:14px;top:14px;bottom:76px;background:${C.panel2};border-radius:14px;padding:12px 14px 24px;display:flex;flex-direction:column`;
+  const chart=document.createElement('div');
+  chart.style.cssText='flex:1;display:flex;align-items:flex-end;gap:2px';
+  for(let i=0;i<HOURS;i++){
+    const tot=claude[i]+kiro[i]+gemini[i]+codex[i];
+    const seg=[['cl',C.claude,claude[i]],['ki',C.kiro,kiro[i]],['ge',C.gemini,gemini[i]],['co',C.codex,codex[i]]]
+      .map(([k,c,v])=>v>0?`<div style="width:100%;height:${v/maxStack*100}%;background:${c}"></div>`:'').join('');
+    const col=document.createElement('div');
+    col.style.cssText=`flex:1;height:100%;display:flex;flex-direction:column-reverse;justify-content:flex-start;border-radius:2px 2px 0 0;overflow:hidden;background:${tot>0?'transparent':C.barbg};min-height:${tot>0?0:2}px`;
+    col.innerHTML=seg;chart.appendChild(col);
+  }
+  chartCard.appendChild(chart);
+  const ax=document.createElement('div');
+  ax.style.cssText=`display:flex;justify-content:space-between;font-size:12px;color:${C.dim};margin-top:6px`;
+  ax.innerHTML='<span>-24h</span><span>agora</span>';chartCard.appendChild(ax);
+  p.appendChild(chartCard);
+  // faixa de totais por IA — linha única compacta no rodapé
+  const totals=[['Claude',C.claude,'90,1 mi'],['Kiro',C.kiro,'4,5 créd.'],['Gemini',C.gemini,'0'],['Codex',C.codex,'0']];
+  const strip=document.createElement('div');
+  strip.style.cssText='position:absolute;left:14px;right:14px;bottom:14px;height:54px;display:flex;gap:8px';
+  totals.forEach(([n,c,v])=>{
+    const cell=document.createElement('div');
+    cell.style.cssText=`flex:1;background:${C.panel2};border-radius:12px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px`;
+    cell.innerHTML=`<span style="font-size:12px;font-weight:700;color:${c};line-height:1">${n}</span><span style="font-size:16px;font-weight:700;color:${C.text};line-height:1.1;white-space:nowrap">${v}</span>`;
+    strip.appendChild(cell);
+  });
+  p.appendChild(strip);
+})();
+
+// ---------------- Versão 6 — cards por bloco de 6h (mini-empilhado) ----------
+(function(){
+  const el=document.getElementById('V6');head(el,'Consumo - 24 horas');
+  const p=panel(el,{bottom:32});
+  const blocks=[
+    {n:'00–06',sub:[[0,2],[2,4],[4,6]]},
+    {n:'06–12',sub:[[6,8],[8,10],[10,12]]},
+    {n:'12–18',sub:[[12,14],[14,16],[16,18]]},
+    {n:'18–24',sub:[[18,20],[20,22],[22,24]]},
+  ].map(b=>({...b,buckets:b.sub.map(bucket)}));
+  const maxBar=Math.max(1,...blocks.flatMap(b=>b.buckets.map(x=>x.tot)));
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;left:14px;right:14px;top:14px;bottom:36px;display:flex;flex-direction:column;gap:12px';
+  blocks.forEach(b=>{
+    const tot=b.buckets.reduce((s,x)=>s+x.tot,0);
+    const totLbl=tot>0?(b.n==='18–24'?'4,5 créd.':tot+' mil'):'0';
+    const bars=b.buckets.map(bk=>{
+      const seg=SERIES.map(([k,c])=>bk[k]>0?`<div style="width:100%;height:${bk[k]/maxBar*100}%;background:${c}"></div>`:'').join('');
+      return `<div style="flex:1;height:100%;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden;background:${bk.tot>0?'transparent':C.barbg};max-width:46px">${seg}</div>`;
+    }).join('');
+    const row=document.createElement('div');
+    row.style.cssText=`flex:1;background:${C.panel2};border-radius:14px;padding:10px 16px;display:flex;align-items:center;gap:16px`;
+    row.innerHTML=`
+      <div style="width:74px">
+        <div style="font-size:16px;font-weight:700;color:${C.text}">${b.n}</div>
+        <div style="font-size:14px;font-weight:700;color:${C.dim}">${totLbl}</div>
+      </div>
+      <div style="flex:1;height:100%;display:flex;align-items:flex-end;justify-content:space-around;gap:10px;padding:8px 0">${bars}</div>`;
+    wrap.appendChild(row);
+  });
+  p.appendChild(wrap);p.appendChild(legendBar());
+})();
+</script>
+</body></html>
