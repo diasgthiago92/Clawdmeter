@@ -21,6 +21,8 @@ import datetime
 import json
 import os
 import re
+import logging
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import httpx
@@ -139,6 +141,36 @@ def build_rows(messages: list[dict], labels: dict[str, str] | None = None) -> li
     ]
 
 
+PHONE_ROOT = Path.home() / "monitor-celulares"
+
+
+def phone_row(now: float, root: Path = PHONE_ROOT) -> list | None:
+    """Local collector status: 0 error, 1 complete, 2 running, 3 waiting."""
+    if not root.is_dir():
+        return None
+    today = datetime.datetime.fromtimestamp(now, ZoneInfo("America/Sao_Paulo")).date().isoformat()
+    try:
+        state = json.loads((root / "estado.json").read_text())
+        if not isinstance(state, dict):
+            raise ValueError("invalid state")
+    except FileNotFoundError:
+        return ["Preços celulares", "11:00", 3, 0, 0, 1]
+    except (OSError, ValueError):
+        return ["Preços celulares", "--:--", 0, 0, 0, 1]
+    if state.get("attempt_day") != today:
+        return ["Preços celulares", "11:00", 3, 0, 0, 1]
+    status = {"completed": 1, "running": 2, "failed": 0}.get(state.get("status"), 3)
+    field = "started_at" if status == 2 else "finished_at"
+    try:
+        stamp = datetime.datetime.fromisoformat(state[field]).astimezone(ZoneInfo("America/Sao_Paulo"))
+        clock = stamp.strftime("%H:%M")
+    except (KeyError, TypeError, ValueError):
+        clock = "--:--"
+    runs = sum(1 for _ in (root / "logs").glob(today.replace("-", "") + "-??????.log"))
+    # Automatic retries are owned by the collector; do not offer an ineffective kickstart.
+    return ["Preços celulares", clock, status, runs, 0, 1]
+
+
 class KiroRoutines:
     def __init__(self, env_path: Path = KIRO_ENV) -> None:
         self.env_path = env_path
@@ -146,6 +178,18 @@ class KiroRoutines:
         self.fetched_at = 0.0
 
     async def get(self, now: float) -> list[dict]:
+        try:
+            payloads = await self._get_slack(now)
+        except Exception as error:
+            logging.getLogger(__name__).warning("Rotinas Slack: %s", error)
+            payloads = self.payloads
+        rows = [row for payload in payloads for row in payload.get("r", [])]
+        local = phone_row(now)
+        if local is not None:
+            rows.insert(0, local)
+        return chunk_table("r", rows) if rows else [{"r": [], "o": 0, "n": 0}]
+
+    async def _get_slack(self, now: float) -> list[dict]:
         if now - self.fetched_at < ROUTINES_REFRESH_S:
             return self.payloads
         self.fetched_at = now

@@ -65,7 +65,9 @@ struct LiveMatch {
 struct RoutineRow {
     char name[28];           // UTF-8, up to 22 characters
     char time[6];            // "HH:MM" of the latest run
-    bool ok;                 // latest run succeeded
+    bool ok;                 // no failure (legacy alert compatibility)
+    int status;              // 0 error, 1 complete, 2 running, 3 waiting
+    bool codex;              // local Codex routine
     int  runs;               // runs today
     bool rerunnable;         // the daemon knows how to start it again
 };

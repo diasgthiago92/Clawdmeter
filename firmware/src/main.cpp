@@ -161,7 +161,9 @@ static bool handle_extra_json(const char* json) {
             if (n >= ROUTINES_MAX) break;
             strlcpy(rows[n].name, src[0] | "?", sizeof(rows[n].name));
             strlcpy(rows[n].time, src[1] | "", sizeof(rows[n].time));
-            rows[n].ok = (src[2] | 1) != 0;
+            rows[n].status = src[2] | 1;
+            rows[n].ok = rows[n].status != 0;
+            rows[n].codex = (src[5] | 0) != 0;
             rows[n].runs = src[3] | 1;
             rows[n].rerunnable = (src[4] | 0) != 0;
             n++;

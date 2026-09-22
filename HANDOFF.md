@@ -29,6 +29,7 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
 "Rodar de novo"), **Vasco ao vivo**.
 
 ## Fontes de dados (daemon/)
+- Rotina **Preços celulares**: `kiro_routines.phone_row` lê `~/monitor-celulares/estado.json` e conta os logs do dia. Coleta às 11h (São Paulo), recuperação pelo próprio LaunchAgent a cada 15 min após falhas. Aparece mesmo sem Slack. Payload de rotina: status 0 erro/1 ok/2 exec/3 aguardando 11h; sexto campo opcional 1 identifica Codex (verde). Sem botão de reexecução: o controlador já gerencia as tentativas. Firmware atualizado interpreta esses estados; as rotinas antigas continuam usando 0/1.
 - Claude: API de uso + transcripts (`usage_extras.py`). Gemini = Antigravity CLI (`antigravity_usage.py`, bancos
   em `~/.gemini/antigravity-cli/conversations`, formato reverso-engenheirado).
 - Kiro: créditos do mês nos logs do Kiro IDE (real); 24h/5h = requisições do kiro-cli × crédito médio (estimado)
