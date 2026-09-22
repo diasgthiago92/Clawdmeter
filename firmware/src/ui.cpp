@@ -1046,18 +1046,32 @@ static void format_tokens(uint64_t t, char* buf, size_t len) {
     for (char* p = buf; *p; p++) if (*p == '.') *p = ',';
 }
 
-// Unit captions sit under each number: "tokens" left, "requisições" right.
+// V5 layout: the four provider totals live in a compact strip along the bottom
+// of the card — one cell each (Claude, Kiro, Gemini, Codex), the colored name
+// on top and the total below. The chart fills the whole area above the strip.
+static int history_strip_y = 0;   // top of the bottom strip, inside the card
+static int history_cell_w = 0;    // width of one strip cell (set at init)
 static void history_place_units(void) {
-    const int y = lv_font_get_line_height(L.reset_font) - 2;
-    lv_obj_align(lbl_history_now, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_align(lbl_history_now_unit, LV_ALIGN_TOP_LEFT, 0, y);
-    const int col = (L.content_w - 2 * L.panel_pad_x) / 7;   // Gemini and Codex sit either side of the center
-    lv_obj_align(lbl_history_ag, LV_ALIGN_TOP_MID, -col, 0);
-    lv_obj_align(lbl_history_ag_unit, LV_ALIGN_TOP_MID, -col, y);
-    lv_obj_align(lbl_history_codex, LV_ALIGN_TOP_MID, col, 0);
-    lv_obj_align(lbl_history_codex_unit, LV_ALIGN_TOP_MID, col, y);
-    lv_obj_align(lbl_history_peak, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_obj_align(lbl_history_peak_unit, LV_ALIGN_TOP_RIGHT, 0, y);
+    const int inner_w   = L.content_w - 2 * L.panel_pad_x;
+    const int name_h    = lv_font_get_line_height(L.axis_font);
+    const int cell_gap  = 6;
+    const int cell_w    = history_cell_w ? history_cell_w : (inner_w - 3 * cell_gap) / 4;
+    // Order across the strip: Claude, Kiro, Gemini, Codex.
+    lv_obj_t* name[4] = {lbl_history_now_unit, lbl_history_peak_unit, lbl_history_ag_unit, lbl_history_codex_unit};
+    lv_obj_t* num[4]  = {lbl_history_now,      lbl_history_peak,      lbl_history_ag,      lbl_history_codex};
+    for (int i = 0; i < 4; i++) {
+        const int x = i * (cell_w + cell_gap);   // left edge of this cell
+        // Each label spans the full cell width and centers its text, so a long
+        // total ("49,0 créd.") stays clipped inside its own cell — never wraps.
+        lv_label_set_long_mode(name[i], LV_LABEL_LONG_CLIP);
+        lv_obj_set_width(name[i], cell_w);
+        lv_obj_set_style_text_align(name[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_pos(name[i], x, history_strip_y);
+        lv_label_set_long_mode(num[i], LV_LABEL_LONG_CLIP);
+        lv_obj_set_width(num[i], cell_w);
+        lv_obj_set_style_text_align(num[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_pos(num[i], x, history_strip_y + name_h);
+    }
 }
 
 static void init_history_screen(lv_obj_t* scr) {
@@ -1068,53 +1082,80 @@ static void init_history_screen(lv_obj_t* scr) {
     const int inner_w = L.content_w - 2 * L.panel_pad_x;
     const int inner_h = panel_h - 2 * L.panel_pad_y;
 
-    // Header: Claude tokens (orange, left), Antigravity tokens (light blue, center)
-    // and Kiro requests (purple, right), each with its unit underneath.
-    lbl_history_now = lv_label_create(panel);
-    lv_label_set_text(lbl_history_now, "---");
-    lv_obj_set_style_text_font(lbl_history_now, L.reset_font, 0);
-    lv_obj_set_style_text_color(lbl_history_now, COL_ACCENT, 0);
-    lv_obj_set_pos(lbl_history_now, 0, 0);
+    // V5 layout — the 24h stacked chart fills the top of the card; a compact
+    // strip of four provider totals (Claude, Kiro, Gemini, Codex) sits along
+    // the bottom, each with its colored name over the total.
+    const int name_h = lv_font_get_line_height(L.axis_font);
+    const int num_h  = lv_font_get_line_height(L.table_font_dense);
+    const int strip_h = name_h + num_h;
+    history_strip_y = inner_h - strip_h;   // top of the bottom strip, in card space
 
-    lbl_history_peak = lv_label_create(panel);
-    lv_label_set_text(lbl_history_peak, "---");
-    lv_obj_set_style_text_font(lbl_history_peak, L.reset_font, 0);
+    // One rounded cell behind each of the four totals.
+    const int cell_gap = 6;
+    const int cell_w   = (inner_w - 3 * cell_gap) / 4;
+    history_cell_w = cell_w;
+    for (int i = 0; i < 4; i++) {
+        lv_obj_t* cell = lv_obj_create(panel);
+        lv_obj_set_pos(cell, i * (cell_w + cell_gap), history_strip_y - 4);
+        lv_obj_set_size(cell, cell_w, strip_h + 8);
+        lv_obj_set_style_bg_color(cell, COL_BG, 0);
+        lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(cell, 0, 0);
+        lv_obj_set_style_radius(cell, 10, 0);
+        lv_obj_set_style_pad_all(cell, 0, 0);
+        lv_obj_clear_flag(cell, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+        lv_obj_add_flag(cell, LV_OBJ_FLAG_EVENT_BUBBLE);
+    }
 
-    lbl_history_ag = lv_label_create(panel);
-    lv_label_set_text(lbl_history_ag, "---");
-    lv_obj_set_style_text_font(lbl_history_ag, L.reset_font, 0);
-    lv_obj_set_style_text_color(lbl_history_ag, COL_AG, 0);
-
-    lbl_history_codex = lv_label_create(panel);
-    lv_label_set_text(lbl_history_codex, "---");
-    lv_obj_set_style_text_font(lbl_history_codex, L.reset_font, 0);
-    lv_obj_set_style_text_color(lbl_history_codex, COL_CODEX, 0);
-
-    lbl_history_codex_unit = lv_label_create(panel);
-    lv_label_set_text(lbl_history_codex_unit, "tokens");
-    lv_obj_set_style_text_font(lbl_history_codex_unit, L.axis_font, 0);
-    lv_obj_set_style_text_color(lbl_history_codex_unit, COL_TEXT, 0);
-
-    lbl_history_ag_unit = lv_label_create(panel);
-    lv_label_set_text(lbl_history_ag_unit, "tokens");
-    lv_obj_set_style_text_font(lbl_history_ag_unit, L.axis_font, 0);
-    lv_obj_set_style_text_color(lbl_history_ag_unit, COL_TEXT, 0);
-    lv_obj_set_style_text_color(lbl_history_peak, COL_KIRO, 0);
-
-    lbl_history_now_unit = lv_label_create(panel);
-    lv_label_set_text(lbl_history_now_unit, "tokens");
+    // Provider name labels (colored, small) — reuse the old *_unit labels.
+    lbl_history_now_unit = lv_label_create(panel);      // Claude
+    lv_label_set_text(lbl_history_now_unit, "Claude");
     lv_obj_set_style_text_font(lbl_history_now_unit, L.axis_font, 0);
-    lv_obj_set_style_text_color(lbl_history_now_unit, COL_TEXT, 0);
+    lv_obj_set_style_text_color(lbl_history_now_unit, COL_ACCENT, 0);
 
-    lbl_history_peak_unit = lv_label_create(panel);
-    lv_label_set_text(lbl_history_peak_unit, "créditos (est.)");
+    lbl_history_peak_unit = lv_label_create(panel);     // Kiro
+    lv_label_set_text(lbl_history_peak_unit, "Kiro");
     lv_obj_set_style_text_font(lbl_history_peak_unit, L.axis_font, 0);
-    lv_obj_set_style_text_color(lbl_history_peak_unit, COL_TEXT, 0);
+    lv_obj_set_style_text_color(lbl_history_peak_unit, COL_KIRO, 0);
+
+    lbl_history_ag_unit = lv_label_create(panel);       // Gemini
+    lv_label_set_text(lbl_history_ag_unit, "Gemini");
+    lv_obj_set_style_text_font(lbl_history_ag_unit, L.axis_font, 0);
+    lv_obj_set_style_text_color(lbl_history_ag_unit, COL_AG, 0);
+
+    lbl_history_codex_unit = lv_label_create(panel);    // Codex
+    lv_label_set_text(lbl_history_codex_unit, "Codex");
+    lv_obj_set_style_text_font(lbl_history_codex_unit, L.axis_font, 0);
+    lv_obj_set_style_text_color(lbl_history_codex_unit, COL_CODEX, 0);
+
+    // Provider total numbers (medium, white) — reuse the old header labels.
+    // table_font (not the big reset_font) so "49,0 créd." fits inside a cell.
+    lbl_history_now = lv_label_create(panel);           // Claude tokens
+    lv_label_set_text(lbl_history_now, "---");
+    lv_obj_set_style_text_font(lbl_history_now, L.table_font_dense, 0);
+    lv_obj_set_style_text_color(lbl_history_now, COL_TEXT, 0);
+
+    lbl_history_peak = lv_label_create(panel);          // Kiro credits
+    lv_label_set_text(lbl_history_peak, "---");
+    lv_obj_set_style_text_font(lbl_history_peak, L.table_font_dense, 0);
+    lv_obj_set_style_text_color(lbl_history_peak, COL_TEXT, 0);
+
+    lbl_history_ag = lv_label_create(panel);            // Gemini tokens
+    lv_label_set_text(lbl_history_ag, "---");
+    lv_obj_set_style_text_font(lbl_history_ag, L.table_font_dense, 0);
+    lv_obj_set_style_text_color(lbl_history_ag, COL_TEXT, 0);
+
+    lbl_history_codex = lv_label_create(panel);         // Codex tokens
+    lv_label_set_text(lbl_history_codex, "---");
+    lv_obj_set_style_text_font(lbl_history_codex, L.table_font_dense, 0);
+    lv_obj_set_style_text_color(lbl_history_codex, COL_TEXT, 0);
+
     history_place_units();
 
+    // Chart card: fills from the top of the panel down to just above the strip.
     const int axis_h  = lv_font_get_line_height(L.axis_font);
-    const int chart_y = lv_font_get_line_height(L.reset_font) - 2 + axis_h + L.panel_pad_y / 2;
-    const int chart_h = inner_h - chart_y - axis_h - 6;
+    const int chart_y = 0;
+    const int chart_h = history_strip_y - chart_y - 8 - axis_h;   // leave room for the -24h/agora axis
 
     lv_obj_t* plot = lv_obj_create(panel);
     lv_obj_set_pos(plot, 0, chart_y);
@@ -1122,7 +1163,7 @@ static void init_history_screen(lv_obj_t* scr) {
     lv_obj_set_style_bg_color(plot, COL_BG, 0);
     lv_obj_set_style_bg_opa(plot, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(plot, 0, 0);
-    lv_obj_set_style_radius(plot, 6, 0);
+    lv_obj_set_style_radius(plot, 10, 0);
     lv_obj_set_style_pad_all(plot, 0, 0);
     lv_obj_clear_flag(plot, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(plot, LV_OBJ_FLAG_EVENT_BUBBLE);
@@ -1151,14 +1192,12 @@ static void init_history_screen(lv_obj_t* scr) {
     lbl_history_empty = make_dim_label(panel, L.reset_font, "Coletando dados...");
     lv_obj_align_to(lbl_history_empty, plot, LV_ALIGN_CENTER, 0, 0);
 
+    // Time axis just under the chart card.
     lv_obj_t* a0 = make_dim_label(panel, L.axis_font, "-24h");
-    lv_obj_align(a0, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    lv_obj_t* legend = make_dim_label(panel, L.axis_font, "");
-    lv_label_set_recolor(legend, true);
-    lv_label_set_text_fmt(legend, "#%s Claude#  #%s Gemini#  #%s Codex#  #%s Kiro#", COL_HEX_CLAUDE, COL_HEX_AG, COL_HEX_CODEX, COL_HEX_KIRO);
-    lv_obj_align(legend, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_pos(a0, 0, chart_y + chart_h + 2);
     lv_obj_t* a2 = make_dim_label(panel, L.axis_font, "agora");
-    lv_obj_align(a2, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    lv_obj_update_layout(a2);
+    lv_obj_set_pos(a2, inner_w - lv_obj_get_width(a2), chart_y + chart_h + 2);
 }
 
 // ======== Scrollable lists ========
@@ -2614,7 +2653,11 @@ void ui_update_history_bars(const char* claude, const char* kiro, const char* ag
     format_tokens(codex_tokens, buf, sizeof(buf));
     lv_label_set_text(lbl_history_codex, buf);
     format_credits(kiro_credits, buf, sizeof(buf));
-    lv_label_set_text(lbl_history_peak, buf);
+    {
+        char kbuf[32];
+        snprintf(kbuf, sizeof(kbuf), "%s créd.", buf);
+        lv_label_set_text(lbl_history_peak, kbuf);
+    }
     history_place_units();
     lv_label_set_text(lbl_history_empty, "Sem uso nas últimas 24h");
     if (any) lv_obj_add_flag(lbl_history_empty, LV_OBJ_FLAG_HIDDEN);
