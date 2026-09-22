@@ -35,6 +35,74 @@ KIRO_CLI_SESSIONS = Path.home() / ".kiro" / "sessions" / "cli"
 KIRO_CLI_STORE = Path.home() / "Library" / "Application Support" / "kiro-cli" / "data.sqlite3"
 DEFAULT_CREDITS_PER_REQUEST = 0.16
 
+# Live GetUsageLimits: the same call the Kiro IDE makes, so the monthly figure
+# stays fresh even when the IDE is closed (we only use kiro-cli). Auth comes
+# from the IDE's SSO token cache, which kiro-cli/Kiro refresh on their own.
+KIRO_TOKEN = Path.home() / ".aws" / "sso" / "cache" / "kiro-auth-token.json"
+KIRO_PROFILE_ARN = "arn:aws:codewhisperer:us-east-1:717564244052:profile/WXD3ADXVREVU"
+CW_TARGET = "AmazonCodeWhispererService.GetUsageLimits"
+
+
+def _read_token(path: Path = KIRO_TOKEN) -> str | None:
+    """Fresh, unexpired bearer token from the IDE's SSO cache, or None."""
+    try:
+        tok = json.loads(path.read_text())
+        access = tok.get("accessToken")
+        exp = tok.get("expiresAt")
+        if not access or not exp:
+            return None
+        expires = datetime.datetime.fromisoformat(exp.replace("Z", "+00:00"))
+        if expires <= datetime.datetime.now(datetime.timezone.utc):
+            return None   # expired; the caller falls back to the IDE log
+        return access
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _normalize_credit(credit: dict) -> dict:
+    """Make a live-API CREDIT breakdown look like a logged one: build_payload
+    expects nextDateReset as an ISO string, but the API returns an epoch float."""
+    reset = credit.get("nextDateReset")
+    if isinstance(reset, (int, float)):
+        credit = dict(credit)
+        credit["nextDateReset"] = (
+            datetime.datetime.fromtimestamp(reset, datetime.timezone.utc).isoformat()
+        )
+    return credit
+
+
+def live_credit_usage(token_path: Path = KIRO_TOKEN, arn: str = KIRO_PROFILE_ARN) -> dict | None:
+    """Call GetUsageLimits directly and return the CREDIT breakdown, or None on
+    any failure (missing/expired token, no network, unexpected shape)."""
+    import urllib.error
+    import urllib.request
+
+    access = _read_token(token_path)
+    if not access:
+        return None
+    try:
+        tok = json.loads(token_path.read_text())
+        region = tok.get("region", "us-east-1")
+    except (OSError, ValueError):
+        region = "us-east-1"
+    url = f"https://codewhisperer.{region}.amazonaws.com/"
+    body = json.dumps({"profileArn": arn, "origin": "AI_EDITOR",
+                       "resourceType": "AGENTIC_REQUEST"}).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amz-Target": CW_TARGET,
+        "Authorization": "Bearer " + access,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, ValueError, OSError):
+        return None
+    credit = next((b for b in data.get("usageBreakdownList", [])
+                   if b.get("resourceType") == "CREDIT"), None)
+    return _normalize_credit(credit) if credit else None
+
+
 
 def parse_log_line(line: str) -> tuple[str, dict] | None:
     """(timestamp, credit breakdown) from one q-client.log line, if it holds one."""
@@ -94,7 +162,10 @@ class KiroUsage:
     def get(self, now: float) -> dict:
         if now - self.read_at >= KIRO_REFRESH_S:
             self.read_at = now
-            self.credit = latest_credit_usage(self.logs_dir) or self.credit
+            # Live API first (fresh even with the IDE closed); the IDE log is the
+            # fallback when the SSO token is missing/expired or the call fails.
+            fresh = live_credit_usage() or latest_credit_usage(self.logs_dir)
+            self.credit = fresh or self.credit
         return build_payload(self.credit, datetime.datetime.fromtimestamp(now, datetime.timezone.utc))
 
 
