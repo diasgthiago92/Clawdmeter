@@ -42,6 +42,14 @@ struct Layout {
     int16_t usage_bar_h;
     const lv_font_t* usage_reset_font;
     bool    kiro_panel;              // room for a third (Kiro) usage panel; else Kiro goes on the status line
+    // Proposta B rows (large layout): 4 provider rows with mini-bars.
+    int16_t urow_h;                  // height of one provider row
+    int16_t urow_gap;                // gap between rows
+    int16_t urow_label_w;            // width reserved for the provider name (left)
+    int16_t urow_minibar_h;          // thin mini-bar height
+    const lv_font_t* urow_name_font; // provider name (Claude/Kiro/...)
+    const lv_font_t* urow_pct_font;  // per-bar % number
+    const lv_font_t* urow_win_font;  // "Daily"/"Weekly" caption + reset hint
     int16_t bar_h;
     int16_t panel_pad_x, panel_pad_y;
     int16_t pill_pad_x, pill_pad_y;
@@ -130,6 +138,16 @@ static void compute_layout(const BoardCaps& c) {
         L.usage_bar_h = 12;
         L.usage_reset_font = &font_styrene_20;
         L.kiro_panel = true;
+        // Proposta B: 4 provider rows fill the space between content_y and the
+        // status line. content_y=100, status line near the bottom → ~340px for
+        // rows. 4 rows of 78 + 3 gaps of 10 = 342.
+        L.urow_h = 78;
+        L.urow_gap = 10;
+        L.urow_label_w = 92;
+        L.urow_minibar_h = 10;
+        L.urow_name_font = &font_styrene_24;
+        L.urow_pct_font = &font_styrene_24;
+        L.urow_win_font = &font_styrene_14;
         L.bt_info_panel_h = 160;
         L.bt_reset_zone_h = 110;
         L.bt_title_font    = &font_tiempos_56;
@@ -392,6 +410,27 @@ static void format_reset_time(int mins, char* buf, size_t len) {
     }
 }
 
+// Compact reset hint for the per-bar line in the Proposta B rows:
+// "faltam 55m", "faltam 4h", "faltam 2d". mins < 0 = unknown ("--").
+static void format_reset_short(int mins, char* buf, size_t len) {
+    if (mins < 0) {
+        snprintf(buf, len, "--");
+    } else if (mins < 60) {
+        snprintf(buf, len, "faltam %dm", mins);
+    } else if (mins < 1440) {
+        snprintf(buf, len, "faltam %dh", mins / 60);
+    } else {
+        snprintf(buf, len, "faltam %dd", mins / 1440);
+    }
+}
+
+// Same, but from a day count (Kiro reports its monthly reset in days).
+static void format_reset_short_days(int days, char* buf, size_t len) {
+    if (days < 0)       snprintf(buf, len, "--");
+    else if (days == 0) snprintf(buf, len, "hoje");
+    else                snprintf(buf, len, "faltam %dd", days);
+}
+
 // Forward decls — callbacks defined near ui_show_screen below
 static void global_click_cb(lv_event_t* e);
 static void make_screen_draggable(lv_obj_t* c);
@@ -497,6 +536,56 @@ static lv_obj_t* make_usage_panel(lv_obj_t* parent, int y, const char* pill_text
     return panel;
 }
 
+// ---- Proposta B: provider row with up to two mini-bar cells ----
+// A cell creates a %/bar pair (returned via out params so ui_update_* can drive
+// them) plus a small window caption ("Daily") and a compact reset hint.
+// x/w are relative to the row's inner content area.
+static void make_minibar_cell(lv_obj_t* row, int x, int w, lv_color_t color,
+                              const char* win_text, lv_obj_t** out_pct,
+                              lv_obj_t** out_bar, lv_obj_t** out_hint) {
+    // Window caption (top-left of the cell).
+    lv_obj_t* win = lv_label_create(row);
+    lv_label_set_text(win, win_text);
+    lv_obj_set_style_text_font(win, L.urow_win_font, 0);
+    lv_obj_set_style_text_color(win, COL_DIM, 0);
+    lv_obj_set_pos(win, x, 2);
+
+    // % number (top-right of the cell).
+    lv_obj_t* pct = lv_label_create(row);
+    lv_label_set_text(pct, "--%");
+    lv_obj_set_style_text_font(pct, L.urow_pct_font, 0);
+    lv_obj_set_style_text_color(pct, color, 0);
+    lv_obj_set_width(pct, w);
+    lv_obj_set_style_text_align(pct, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_pos(pct, x, 0);
+
+    // Thin bar under the caption/number.
+    lv_obj_t* bar = make_bar(row, x, 30, w, L.urow_minibar_h);
+    lv_obj_set_style_bg_color(bar, color, LV_PART_INDICATOR);
+
+    // Compact reset hint under the bar.
+    lv_obj_t* hint = lv_label_create(row);
+    lv_label_set_text(hint, "--");
+    lv_obj_set_style_text_font(hint, L.urow_win_font, 0);
+    lv_obj_set_style_text_color(hint, COL_DIM, 0);
+    lv_obj_set_pos(hint, x, 44);
+
+    if (out_pct) *out_pct = pct;
+    if (out_bar) *out_bar = bar;
+    if (out_hint) *out_hint = hint;
+}
+
+// One provider row: colored name on the left, one or two mini-bar cells on the right.
+static lv_obj_t* make_provider_row(lv_obj_t* parent, int y, const char* name, lv_color_t color) {
+    lv_obj_t* row = make_panel(parent, L.margin, y, L.content_w, L.urow_h);
+    lv_obj_t* lbl = lv_label_create(row);
+    lv_label_set_text(lbl, name);
+    lv_obj_set_style_text_font(lbl, L.urow_name_font, 0);
+    lv_obj_set_style_text_color(lbl, color, 0);
+    lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
+    return row;
+}
+
 // Pairing hint — shown when disconnected so the screen isn't empty. Pairing
 // from the host's Bluetooth settings works on every board, buttons or not.
 static void build_pair_group(lv_obj_t* parent) {
@@ -579,6 +668,26 @@ static lv_obj_t* lbl_codex_week_label;
 static lv_obj_t* bar_codex_week;
 static lv_obj_t* lbl_codex_week_reset;
 
+// Proposta B (large layout): one row per provider, each with up to two mini-bars
+// (Daily / Weekly). Each mini-bar carries a small "faltam Xh" reset hint under it.
+// These reuse the existing %/bar objects above; only the compact hints are new.
+static bool      usage_rows_layout = false;   // true = Proposta B rows (large layout)
+static lv_obj_t* hint_session = nullptr;      // Claude Daily
+static lv_obj_t* hint_weekly = nullptr;       // Claude Weekly
+static lv_obj_t* hint_kiro = nullptr;         // Kiro Monthly
+static lv_obj_t* hint_ag = nullptr;           // Gemini Weekly
+static lv_obj_t* hint_ag_day = nullptr;       // Gemini Daily
+static lv_obj_t* hint_codex_day = nullptr;    // Codex Daily
+static lv_obj_t* hint_codex_week = nullptr;   // Codex Weekly
+
+// Sets a mini-bar's compact reset hint (Proposta B only; no-op elsewhere).
+static void set_reset_hint(lv_obj_t* hint, int mins) {
+    if (!hint) return;
+    char buf[16];
+    format_reset_short(mins, buf, sizeof(buf));
+    lv_label_set_text(hint, buf);
+}
+
 // Large layout: panels are sorted by usage %, highest on top. Ties and panels
 // without data (-1, at the bottom) keep the default order below.
 enum { UP_CLAUDE_WEEK, UP_KIRO, UP_AG_WEEK, UP_CLAUDE_DAY, UP_AG_DAY,
@@ -586,6 +695,8 @@ enum { UP_CLAUDE_WEEK, UP_KIRO, UP_AG_WEEK, UP_CLAUDE_DAY, UP_AG_DAY,
 static int usage_pct[UP_COUNT] = {-1, -1, -1, -1, -1, -1, -1};
 
 static void sort_usage_panels(void) {
+    // Proposta B rows are fixed (one per provider); never reposition them.
+    if (usage_rows_layout) return;
     if (!L.kiro_panel) return;
     lv_obj_t* panel[UP_COUNT] = {panel_weekly, panel_kiro, panel_ag, panel_session, panel_ag_day,
                                  panel_codex_day, panel_codex_week};
@@ -603,9 +714,10 @@ static void sort_usage_panels(void) {
     }
 }
 
-// Panels are sorted highest first, so the ones below the three visible rows
-// have some usage only when more than three panels are above 0%.
+// Proposta B shows every provider at once, so nothing is ever hidden and the
+// screen never needs to glide. (Legacy scroll layout kept for reference.)
 static bool usage_hidden_in_use(void) {
+    if (usage_rows_layout) return false;
     int in_use = 0;
     for (int i = 0; i < UP_COUNT; i++) in_use += usage_pct[i] > 0;
     return in_use > 3;
@@ -643,69 +755,136 @@ static void init_usage_screen(lv_obj_t* scr) {
     lv_obj_clear_flag(usage_group, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(usage_group, LV_OBJ_FLAG_EVENT_BUBBLE);
 
-    // Large layout: all provider quota panels share a scrollable box (three visible at a time).
+    // Large layout uses Proposta B: 4 provider rows (Claude, Kiro, Gemini, Codex),
+    // each with one or two mini-bars. Small/compact layouts keep the two tall
+    // panels (Claude Daily on top, Weekly below). No scroll box in either case.
+    usage_rows_layout = L.kiro_panel;
     lv_obj_t* panels = usage_group;
     int py0 = L.content_y;
     const int row = L.usage_panel_h + L.usage_panel_gap;
-    if (L.kiro_panel) {
-        panels = make_usage_scroll_box(usage_group, L.content_y, L.scr_w, 3, L.usage_panel_h + L.usage_panel_gap);
-        py0 = 0;
-    }
 
-    // Small layouts only fit two panels: Claude Daily on top, Weekly below.
-    panel_session = make_usage_panel(panels, L.kiro_panel ? py0 + 3 * row : py0, "Claude - Daily",
-                     &lbl_session_pct, &lbl_session_label,
-                     &bar_session, &lbl_session_reset);
+    if (usage_rows_layout) {
+        // ---- Proposta B rows ----
+        const int rh = L.urow_h + L.urow_gap;
+        const int inner_w = L.content_w - 2 * L.panel_pad_x;
+        const int lw = L.urow_label_w;              // left band for the provider name
+        const int cell_gap = 16;
+        const int cells_x = lw;
+        const int cells_w = inner_w - lw;
+        const int cell_w = (cells_w - cell_gap) / 2;
+        const int cell2_x = cells_x + cell_w + cell_gap;
 
-    // Enterprise-only overlays inside panel_session — hidden until enterprise data arrives
-    lbl_session_pct_sym = lv_label_create(panel_session);
-    lv_label_set_text(lbl_session_pct_sym, "%");
-    lv_obj_set_style_text_font(lbl_session_pct_sym, L.reset_font, 0);
-    lv_obj_set_style_text_color(lbl_session_pct_sym, COL_TEXT, 0);
-    lv_obj_add_flag(lbl_session_pct_sym, LV_OBJ_FLAG_HIDDEN);
+        // Claude — Daily + Weekly. panel_session/panel_weekly point at this row
+        // so the enterprise overlays and hidden-flag logic keep working.
+        lv_obj_t* row_claude = make_provider_row(panels, py0, "Claude", COL_ACCENT);
+        panel_session = row_claude;
+        panel_weekly = row_claude;
+        make_minibar_cell(row_claude, cells_x, cell_w, COL_ACCENT, "Daily",
+                          &lbl_session_pct, &bar_session, &hint_session);
+        make_minibar_cell(row_claude, cell2_x, cell_w, COL_ACCENT, "Weekly",
+                          &lbl_weekly_pct, &bar_weekly, &hint_weekly);
 
-    lbl_spending_desc = lv_label_create(panel_session);
-    lv_label_set_text(lbl_spending_desc, "do orçamento mensal");
-    lv_obj_set_style_text_font(lbl_spending_desc, L.reset_font, 0);
-    lv_obj_set_style_text_color(lbl_spending_desc, COL_DIM, 0);
-    lv_obj_set_pos(lbl_spending_desc, 0, L.usage_reset_y);
-    lv_obj_add_flag(lbl_spending_desc, LV_OBJ_FLAG_HIDDEN);
+        // Enterprise-only overlays inside the Claude row — hidden until enterprise data arrives.
+        lbl_session_pct_sym = lv_label_create(row_claude);
+        lv_label_set_text(lbl_session_pct_sym, "%");
+        lv_obj_set_style_text_font(lbl_session_pct_sym, L.urow_win_font, 0);
+        lv_obj_set_style_text_color(lbl_session_pct_sym, COL_TEXT, 0);
+        lv_obj_add_flag(lbl_session_pct_sym, LV_OBJ_FLAG_HIDDEN);
+        lbl_spending_desc = lv_label_create(row_claude);
+        lv_label_set_text(lbl_spending_desc, "do orçamento mensal");
+        lv_obj_set_style_text_font(lbl_spending_desc, L.urow_win_font, 0);
+        lv_obj_set_style_text_color(lbl_spending_desc, COL_DIM, 0);
+        lv_obj_add_flag(lbl_spending_desc, LV_OBJ_FLAG_HIDDEN);
+        lbl_spending_status = lv_label_create(row_claude);
+        lv_label_set_text(lbl_spending_status, "");
+        lv_obj_set_style_text_font(lbl_spending_status, L.urow_win_font, 0);
+        lv_obj_add_flag(lbl_spending_status, LV_OBJ_FLAG_HIDDEN);
+        // Reset labels still exist (used by the small layout / enterprise recolor)
+        // but stay off-screen in row mode; the compact hints carry the reset info.
+        lbl_session_reset = lv_label_create(row_claude);
+        lbl_weekly_reset = lv_label_create(row_claude);
+        lv_label_set_recolor(lbl_weekly_reset, true);
+        lv_obj_add_flag(lbl_session_reset, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_weekly_reset, LV_OBJ_FLAG_HIDDEN);
+        lbl_session_label = lv_label_create(row_claude);
+        lbl_weekly_label = lv_label_create(row_claude);
+        lv_obj_add_flag(lbl_session_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_weekly_label, LV_OBJ_FLAG_HIDDEN);
 
-    lbl_spending_status = lv_label_create(panel_session);
-    lv_label_set_text(lbl_spending_status, "");
-    lv_obj_set_style_text_font(lbl_spending_status, L.pace_font, 0);
-    lv_obj_set_pos(lbl_spending_status, 0, L.usage_reset_y + 20);
-    lv_obj_add_flag(lbl_spending_status, LV_OBJ_FLAG_HIDDEN);
+        // Kiro — one mini-bar (Mês). The 5h/24h Kiro figures live on the history
+        // screen, so the row shows the monthly credit budget across the full width.
+        lv_obj_t* row_kiro = make_provider_row(panels, py0 + rh, "Kiro", COL_KIRO);
+        panel_kiro = row_kiro;
+        make_minibar_cell(row_kiro, cells_x, cells_w, COL_KIRO, "Mês",
+                          &lbl_kiro_pct, &bar_kiro, &hint_kiro);
+        lbl_kiro_label = lv_label_create(row_kiro);
+        lbl_kiro_reset = lv_label_create(row_kiro);
+        lv_obj_add_flag(lbl_kiro_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_kiro_reset, LV_OBJ_FLAG_HIDDEN);
 
-    panel_weekly = make_usage_panel(panels,
-                     L.kiro_panel ? py0 : py0 + row, "Claude - Weekly",
-                     &lbl_weekly_pct, &lbl_weekly_label,
-                     &bar_weekly, &lbl_weekly_reset);
-    // Recolor enabled so enterprise period box can color pace and reset separately
-    lv_label_set_recolor(lbl_weekly_reset, true);
+        // Gemini — Daily + Weekly.
+        lv_obj_t* row_ag = make_provider_row(panels, py0 + 2 * rh, "Gemini", COL_AG);
+        panel_ag = row_ag;
+        panel_ag_day = row_ag;
+        make_minibar_cell(row_ag, cells_x, cell_w, COL_AG, "Daily",
+                          &lbl_ag_day_pct, &bar_ag_day, &hint_ag_day);
+        make_minibar_cell(row_ag, cell2_x, cell_w, COL_AG, "Weekly",
+                          &lbl_ag_pct, &bar_ag, &hint_ag);
+        lbl_ag_label = lv_label_create(row_ag);
+        lbl_ag_day_label = lv_label_create(row_ag);
+        lbl_ag_reset = lv_label_create(row_ag);
+        lbl_ag_day_reset = lv_label_create(row_ag);
+        lv_obj_add_flag(lbl_ag_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_ag_day_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_ag_reset, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_ag_day_reset, LV_OBJ_FLAG_HIDDEN);
 
-    if (L.kiro_panel) {
-        panel_kiro = make_usage_panel(panels,
-                         py0 + row, "Kiro - Monthly",
-                         &lbl_kiro_pct, &lbl_kiro_label, &bar_kiro, &lbl_kiro_reset);
-        lv_label_set_text(lbl_kiro_reset, "Sem dados do Kiro");
-        panel_ag = make_usage_panel(panels,
-                         py0 + 2 * row, "Gemini - Weekly",
-                         &lbl_ag_pct, &lbl_ag_label, &bar_ag, &lbl_ag_reset);
-        lv_label_set_text(lbl_ag_pct, "---%");
-        lv_label_set_text(lbl_ag_reset, "Sem dados do Gemini");
-        panel_ag_day = make_usage_panel(panels, py0 + 4 * row, "Gemini - Daily",
-                         &lbl_ag_day_pct, &lbl_ag_day_label, &bar_ag_day, &lbl_ag_day_reset);
-        lv_label_set_text(lbl_ag_day_pct, "---%");
-        lv_label_set_text(lbl_ag_day_reset, "Sem uso do Gemini hoje");
-        panel_codex_day = make_usage_panel(panels, py0 + 5 * row, "Codex - Daily",
-                         &lbl_codex_day_pct, &lbl_codex_day_label, &bar_codex_day, &lbl_codex_day_reset);
-        lv_label_set_text(lbl_codex_day_pct, "---%");
-        lv_label_set_text(lbl_codex_day_reset, "Sem dados do Codex");
-        panel_codex_week = make_usage_panel(panels, py0 + 6 * row, "Codex - Weekly",
-                         &lbl_codex_week_pct, &lbl_codex_week_label, &bar_codex_week, &lbl_codex_week_reset);
-        lv_label_set_text(lbl_codex_week_pct, "---%");
-        lv_label_set_text(lbl_codex_week_reset, "Sem dados do Codex");
+        // Codex — Daily + Weekly.
+        lv_obj_t* row_codex = make_provider_row(panels, py0 + 3 * rh, "Codex", COL_CODEX);
+        panel_codex_day = row_codex;
+        panel_codex_week = row_codex;
+        make_minibar_cell(row_codex, cells_x, cell_w, COL_CODEX, "Daily",
+                          &lbl_codex_day_pct, &bar_codex_day, &hint_codex_day);
+        make_minibar_cell(row_codex, cell2_x, cell_w, COL_CODEX, "Weekly",
+                          &lbl_codex_week_pct, &bar_codex_week, &hint_codex_week);
+        lbl_codex_day_label = lv_label_create(row_codex);
+        lbl_codex_week_label = lv_label_create(row_codex);
+        lbl_codex_day_reset = lv_label_create(row_codex);
+        lbl_codex_week_reset = lv_label_create(row_codex);
+        lv_obj_add_flag(lbl_codex_day_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_codex_week_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_codex_day_reset, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lbl_codex_week_reset, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        // ---- Small / compact layouts: two tall panels, no scroll, no Kiro panel ----
+        panel_session = make_usage_panel(panels, py0, "Claude - Daily",
+                         &lbl_session_pct, &lbl_session_label,
+                         &bar_session, &lbl_session_reset);
+
+        // Enterprise-only overlays inside panel_session — hidden until enterprise data arrives
+        lbl_session_pct_sym = lv_label_create(panel_session);
+        lv_label_set_text(lbl_session_pct_sym, "%");
+        lv_obj_set_style_text_font(lbl_session_pct_sym, L.reset_font, 0);
+        lv_obj_set_style_text_color(lbl_session_pct_sym, COL_TEXT, 0);
+        lv_obj_add_flag(lbl_session_pct_sym, LV_OBJ_FLAG_HIDDEN);
+
+        lbl_spending_desc = lv_label_create(panel_session);
+        lv_label_set_text(lbl_spending_desc, "do orçamento mensal");
+        lv_obj_set_style_text_font(lbl_spending_desc, L.reset_font, 0);
+        lv_obj_set_style_text_color(lbl_spending_desc, COL_DIM, 0);
+        lv_obj_set_pos(lbl_spending_desc, 0, L.usage_reset_y);
+        lv_obj_add_flag(lbl_spending_desc, LV_OBJ_FLAG_HIDDEN);
+
+        lbl_spending_status = lv_label_create(panel_session);
+        lv_label_set_text(lbl_spending_status, "");
+        lv_obj_set_style_text_font(lbl_spending_status, L.pace_font, 0);
+        lv_obj_set_pos(lbl_spending_status, 0, L.usage_reset_y + 20);
+        lv_obj_add_flag(lbl_spending_status, LV_OBJ_FLAG_HIDDEN);
+
+        panel_weekly = make_usage_panel(panels, py0 + row, "Claude - Weekly",
+                         &lbl_weekly_pct, &lbl_weekly_label,
+                         &bar_weekly, &lbl_weekly_reset);
+        lv_label_set_recolor(lbl_weekly_reset, true);
     }
 
     // Brand colors: the number and bar in the tool's primary color, text in white.
@@ -1097,6 +1276,7 @@ void ui_update_antigravity(int used_pct, int reset_mins) {
         lv_label_set_text(lbl_ag_pct, "---%");
         lv_bar_set_value(bar_ag, 0, LV_ANIM_ON);
         lv_label_set_text(lbl_ag_reset, "Sem dados do Gemini");
+        set_reset_hint(hint_ag, -1);
         return;
     }
     char buf[48];
@@ -1104,6 +1284,7 @@ void ui_update_antigravity(int used_pct, int reset_mins) {
     lv_bar_set_value(bar_ag, used_pct, LV_ANIM_ON);
     format_reset_time(reset_mins, buf, sizeof(buf));
     lv_label_set_text(lbl_ag_reset, buf);
+    set_reset_hint(hint_ag, reset_mins);
 }
 
 void ui_update_antigravity_daily(uint64_t tokens_today, int pct_of_peak, int responses) {
@@ -1114,6 +1295,9 @@ void ui_update_antigravity_daily(uint64_t tokens_today, int pct_of_peak, int res
     char buf[48];
     lv_label_set_text_fmt(lbl_ag_day_pct, "%d%%", pct_of_peak);
     lv_bar_set_value(bar_ag_day, pct_of_peak, LV_ANIM_ON);
+    // Daily Gemini has no reset clock (it's "today vs peak"): the hint shows
+    // whether there was any use today.
+    if (hint_ag_day) lv_label_set_text(hint_ag_day, responses > 0 ? "hoje" : "sem uso");
     if (responses <= 0) {
         lv_label_set_text(lbl_ag_day_reset, "Sem uso do Gemini hoje");
         return;
@@ -1124,8 +1308,10 @@ void ui_update_antigravity_daily(uint64_t tokens_today, int pct_of_peak, int res
 }
 
 static void update_codex_panel(int which, lv_obj_t* pct_label, lv_obj_t* bar,
-                               lv_obj_t* reset_label, int used_pct, int reset_mins, uint64_t tokens) {
+                               lv_obj_t* reset_label, lv_obj_t* hint,
+                               int used_pct, int reset_mins, uint64_t tokens) {
     set_usage_pct(which, used_pct < 0 ? -1 : used_pct);
+    set_reset_hint(hint, used_pct < 0 ? -1 : reset_mins);
     if (used_pct < 0) {
         lv_label_set_text(pct_label, "---%");
         lv_bar_set_value(bar, 0, LV_ANIM_ON);
@@ -1143,13 +1329,13 @@ static void update_codex_panel(int which, lv_obj_t* pct_label, lv_obj_t* bar,
 void ui_update_codex_daily(int used_pct, int reset_mins, uint64_t tokens) {
     if (!panel_codex_day) return;
     update_codex_panel(UP_CODEX_DAY, lbl_codex_day_pct, bar_codex_day,
-                       lbl_codex_day_reset, used_pct, reset_mins, tokens);
+                       lbl_codex_day_reset, hint_codex_day, used_pct, reset_mins, tokens);
 }
 
 void ui_update_codex_weekly(int used_pct, int reset_mins, uint64_t tokens) {
     if (!panel_codex_week) return;
     update_codex_panel(UP_CODEX_WEEK, lbl_codex_week_pct, bar_codex_week,
-                       lbl_codex_week_reset, used_pct, reset_mins, tokens);
+                       lbl_codex_week_reset, hint_codex_week, used_pct, reset_mins, tokens);
 }
 
 // Crypto and B3 screens share one table: 3 text cells + a colored change cell.
@@ -2250,6 +2436,11 @@ void ui_update_kiro(int percent, int reset_days, int credits_used, int credit_li
     kiro_reset_days = reset_days;
     if (!panel_kiro) return;
     set_usage_pct(UP_KIRO, percent < 0 ? -1 : percent);
+    if (hint_kiro) {
+        char hb[16];
+        format_reset_short_days(percent < 0 ? -1 : reset_days, hb, sizeof(hb));
+        lv_label_set_text(hint_kiro, hb);
+    }
     if (percent < 0) {
         lv_label_set_text(lbl_kiro_pct, "---%");
         lv_bar_set_value(bar_kiro, 0, LV_ANIM_OFF);
@@ -2563,7 +2754,10 @@ void ui_update(const UsageData* data) {
 
     int s_pct = (int)(data->session_pct + 0.5f);
 
-    if (data->enterprise) {
+    if (usage_rows_layout) {
+        // Proposta B: the Claude row's mini-bars are already styled; enterprise
+        // spending mode isn't represented as a row. Keep the compact cells as-is.
+    } else if (data->enterprise) {
         // Spending box: big number-only label + small "%" symbol + desc + pace
         lv_obj_set_style_text_font(lbl_session_pct, L.ent_pct_font, 0);
         lv_label_set_text(lbl_session_label, "Gastos");
@@ -2602,6 +2796,7 @@ void ui_update(const UsageData* data) {
         lv_label_set_text_fmt(lbl_session_pct, "%d%%", s_pct);
         format_reset_time(data->session_reset_mins, buf, sizeof(buf));
         lv_label_set_text(lbl_session_reset, buf);
+        set_reset_hint(hint_session, data->session_reset_mins);
     }
 
     lv_bar_set_value(bar_session, s_pct, LV_ANIM_ON);
@@ -2627,6 +2822,7 @@ void ui_update(const UsageData* data) {
         set_usage_pct(UP_CLAUDE_WEEK, w_pct);
         format_reset_time(data->weekly_reset_mins, buf, sizeof(buf));
         lv_label_set_text(lbl_weekly_reset, buf);
+        set_reset_hint(hint_weekly, data->weekly_reset_mins);
     }
 }
 

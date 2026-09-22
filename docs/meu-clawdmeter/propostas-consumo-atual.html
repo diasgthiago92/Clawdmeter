@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Clawdmeter · Propostas Consumo Atual</title>
+<style>
+  :root{
+    --bg:#000;--panel:#17171c;--panel2:#0f0f13;--text:#fafafa;--dim:#8a8a93;
+    --claude:#d97757;--kiro:#9046ff;--gemini:#64b5f6;--codex:#10a37f;--barbg:#2a2a30;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#111;color:#fff;font-family:"Segoe UI",Inter,system-ui,sans-serif;padding:32px;display:flex;flex-wrap:wrap;gap:40px;justify-content:center}
+  .item{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .cap{max-width:480px;color:#bbb;font-size:13px;line-height:1.5;text-align:center}
+  .cap b{color:#fff}
+  .dev{width:480px;height:480px;background:var(--bg);border-radius:44px;border:10px solid #1b1b22;
+       box-shadow:0 0 0 1px #2e2e38, 0 20px 60px rgba(0,0,0,.6);position:relative;overflow:hidden;
+       font-family:"Segoe UI",Inter,system-ui,sans-serif}
+  .title{position:absolute;left:96px;top:34px;font-family:Georgia,"Tiempos",serif;font-size:34px;color:#fff}
+  .ghost{position:absolute;left:20px;top:28px;width:60px;height:60px;background:
+     radial-gradient(circle at 50% 45%, #e6e6ea 60%, transparent 62%);border-radius:12px 12px 6px 6px}
+  .batt{position:absolute;right:20px;top:30px;font-size:14px;color:#cfcfd4}
+  h3{width:100%;color:#fff;font-size:20px;margin:6px 0 -18px;text-align:center}
+</style></head><body>
+
+<h3>Proposta A — Grade 2×N compacta (todas as 7 num olhar)</h3>
+<div class="item">
+<div class="dev" id="A"></div>
+<div class="cap"><b>Grade de cards pequenos.</b> Cada IA×janela vira um card com nome, %, barra fina e reset curto. 7 cards em grade 2 colunas cabem sem scroll. Ordenados por % (maior no topo-esq). Zero scroll, leitura de relance.</div>
+</div>
+
+<h3>Proposta B — Uma linha por provedor, Daily + Weekly juntos</h3>
+<div class="item">
+<div class="dev" id="B"></div>
+<div class="cap"><b>Agrupa por IA (4 linhas).</b> Cada provedor ocupa uma faixa com sua cor: rótulo à esquerda, duas mini-barras (Daily / Semanal-ou-Mensal) com % à direita. Some a redundância; 4 faixas grandes e legíveis, todas visíveis.</div>
+</div>
+
+<h3>Proposta C — Barras horizontais empilhadas (ranking)</h3>
+<div class="item">
+<div class="dev" id="C"></div>
+<div class="cap"><b>Ranking de consumo.</b> Uma barra horizontal por métrica, ordenada do maior para o menor uso. Nome + % na própria barra. Sete barras finas cabem numa coluna. Ótimo pra "quem está mais perto do limite".</div>
+</div>
+
+<h3>Proposta D — Anéis (donuts) por provedor</h3>
+<div class="item">
+<div class="dev" id="D"></div>
+<div class="cap"><b>4 anéis, um por IA.</b> Cada donut mostra o uso principal (Claude=Weekly, Kiro=Monthly, Gemini/Codex=Daily) com % grande no centro e reset embaixo. Visual "dashboard", muito escaneável; janelas secundárias viram um tracinho no anel.</div>
+</div>
+
+<script>
+const C={claude:'#d97757',kiro:'#9046ff',gemini:'#64b5f6',codex:'#10a37f',dim:'#8a8a93',barbg:'#2a2a30',panel:'#17171c'};
+// dados de exemplo (realistas, alinhados às capturas)
+const D=[
+  {n:'Claude · Weekly', c:C.claude, pct:35, sub:'Reinicia em 2d 3h'},
+  {n:'Kiro · Monthly',  c:C.kiro,   pct:48, sub:'964/2000 · 16d'},
+  {n:'Claude · Daily',  c:C.claude, pct:22, sub:'Reinicia 4h 55m'},
+  {n:'Gemini · Weekly', c:C.gemini, pct:18, sub:'Reinicia em 5d'},
+  {n:'Codex · Daily',   c:C.codex,  pct:12, sub:'Reinicia 6h'},
+  {n:'Gemini · Daily',  c:C.gemini, pct:0,  sub:'Sem uso hoje'},
+  {n:'Codex · Weekly',  c:C.codex,  pct:0,  sub:'Sem dados'},
+];
+function head(el,title){
+  el.innerHTML=`<div class="ghost"></div><div class="title">${title}</div><div class="batt">🖱65% ⌨94%</div>`;
+}
+// ---------- A: grade 2 colunas ----------
+(function(){const el=document.getElementById('A');head(el,'Consumo Atual');
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;left:16px;right:16px;top:96px;bottom:40px;display:grid;grid-template-columns:1fr 1fr;gap:10px';
+  D.forEach(d=>{const card=document.createElement('div');
+    card.style.cssText=`background:${C.panel};border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;justify-content:center`;
+    card.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:32px;font-weight:700;color:${d.c}">${d.pct}%</span>
+        <span style="font-size:12px;color:#dcdce0;text-align:right;line-height:1.1">${d.n.replace(' · ','<br>')}</span>
+      </div>
+      <div style="height:7px;background:${C.barbg};border-radius:4px;margin:8px 0 6px"><div style="height:100%;width:${d.pct}%;background:${d.c};border-radius:4px"></div></div>
+      <div style="font-size:11px;color:${C.dim}">${d.sub}</div>`;
+    wrap.appendChild(card);});
+  el.appendChild(wrap);
+})();
+// ---------- B: uma faixa por provedor ----------
+(function(){const el=document.getElementById('B');head(el,'Consumo Atual');
+  const prov=[
+    {n:'Claude',c:C.claude,rows:[['Daily',22],['Weekly',35]]},
+    {n:'Kiro',  c:C.kiro,  rows:[['5h',8],['Mês',48]]},
+    {n:'Gemini',c:C.gemini,rows:[['Daily',0],['Weekly',18]]},
+    {n:'Codex', c:C.codex, rows:[['Daily',12],['Weekly',0]]},
+  ];
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;left:16px;right:16px;top:96px;bottom:40px;display:flex;flex-direction:column;gap:12px';
+  prov.forEach(p=>{const row=document.createElement('div');
+    row.style.cssText=`background:${C.panel};border-radius:16px;padding:14px 16px;flex:1;display:flex;align-items:center;gap:16px`;
+    let bars=p.rows.map(r=>`
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#cfcfd4;margin-bottom:4px"><span>${r[0]}</span><span style="color:${p.c};font-weight:700">${r[1]}%</span></div>
+        <div style="height:9px;background:${C.barbg};border-radius:5px"><div style="height:100%;width:${r[1]}%;background:${p.c};border-radius:5px"></div></div>
+      </div>`).join('');
+    row.innerHTML=`<div style="width:74px;font-size:20px;font-weight:700;color:${p.c}">${p.n}</div><div style="flex:1;display:flex;gap:18px">${bars}</div>`;
+    wrap.appendChild(row);});
+  el.appendChild(wrap);
+})();
+// ---------- C: ranking barras horizontais ----------
+(function(){const el=document.getElementById('C');head(el,'Consumo Atual');
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;left:16px;right:16px;top:100px;bottom:36px;display:flex;flex-direction:column;justify-content:space-between';
+  [...D].sort((a,b)=>b.pct-a.pct).forEach(d=>{const r=document.createElement('div');
+    r.style.cssText='height:38px;position:relative;display:flex;align-items:center';
+    r.innerHTML=`
+      <div style="position:absolute;inset:0;background:${C.barbg};border-radius:9px"></div>
+      <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.max(d.pct,14)}%;background:${d.c};border-radius:9px;opacity:.9"></div>
+      <div style="position:relative;padding-left:14px;font-size:15px;color:#fff;font-weight:600">${d.n}</div>
+      <div style="position:relative;margin-left:auto;padding-right:14px;font-size:16px;font-weight:700;color:#fff">${d.pct}%</div>`;
+    wrap.appendChild(r);});
+  el.appendChild(wrap);
+})();
+// ---------- D: anéis por provedor ----------
+(function(){const el=document.getElementById('D');head(el,'Consumo Atual');
+  const prov=[
+    {n:'Claude',c:C.claude,pct:35,lbl:'Weekly',sub:'2d 3h'},
+    {n:'Kiro',  c:C.kiro,  pct:48,lbl:'Mês',   sub:'16d'},
+    {n:'Gemini',c:C.gemini,pct:18,lbl:'Weekly',sub:'5d'},
+    {n:'Codex', c:C.codex, pct:12,lbl:'Daily', sub:'6h'},
+  ];
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:absolute;left:16px;right:16px;top:100px;bottom:36px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:14px';
+  prov.forEach(p=>{const cell=document.createElement('div');
+    cell.style.cssText=`background:${C.panel};border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px`;
+    const deg=p.pct*3.6;
+    cell.innerHTML=`
+      <div style="width:96px;height:96px;border-radius:50%;background:conic-gradient(${p.c} ${deg}deg, ${C.barbg} 0);display:flex;align-items:center;justify-content:center">
+        <div style="width:70px;height:70px;border-radius:50%;background:${C.panel};display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <span style="font-size:24px;font-weight:700;color:${p.c};line-height:1">${p.pct}%</span>
+          <span style="font-size:10px;color:${C.dim}">${p.lbl}</span>
+        </div>
+      </div>
+      <div style="font-size:16px;font-weight:700;color:#fff;margin-top:6px">${p.n}</div>
+      <div style="font-size:11px;color:${C.dim}">renova ${p.sub}</div>`;
+    wrap.appendChild(cell);});
+  el.appendChild(wrap);
+})();
+</script>
+</body></html>
