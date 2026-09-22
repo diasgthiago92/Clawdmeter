@@ -73,3 +73,41 @@ def test_credits_per_request_average(tmp_path):
     con.close()
     assert abs(credits_per_request(store) - 0.15) < 1e-9
     assert credits_per_request(tmp_path / "missing.sqlite3") == DEFAULT_CREDITS_PER_REQUEST
+
+
+def test_read_token_refreshes_when_expired(tmp_path, monkeypatch):
+    """An expired cached token is refreshed via SSO-OIDC (not dropped to None),
+    and the rotated token is written back to the cache."""
+    import io
+
+    from daemon import kiro_usage as k
+
+    cache = tmp_path
+    token = cache / "kiro-auth-token.json"
+    token.write_text(json.dumps({
+        "accessToken": "OLD", "refreshToken": "R1", "clientIdHash": "hash",
+        "region": "us-east-1", "expiresAt": "2020-01-01T00:00:00Z",   # long expired
+    }))
+    (cache / "hash.json").write_text(json.dumps({"clientId": "cid", "clientSecret": "sec"}))
+
+    def fake_urlopen(req, timeout=15):
+        assert req.full_url == "https://oidc.us-east-1.amazonaws.com/token"
+        payload = json.loads(req.data)
+        assert payload["grantType"] == "refresh_token" and payload["refreshToken"] == "R1"
+        return io.BytesIO(json.dumps(
+            {"accessToken": "NEW", "refreshToken": "R2", "expiresIn": 3600}).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    assert k._read_token(token) == "NEW"
+    saved = json.loads(token.read_text())
+    assert saved["accessToken"] == "NEW" and saved["refreshToken"] == "R2"
+    assert saved["expiresAt"] > "2026"   # a fresh future expiry was written
+
+
+def test_read_token_none_when_refresh_unavailable(tmp_path):
+    """No refreshToken/registration → no usable token (caller falls back)."""
+    from daemon import kiro_usage as k
+
+    token = tmp_path / "kiro-auth-token.json"
+    token.write_text(json.dumps({"accessToken": "OLD", "expiresAt": "2020-01-01T00:00:00Z"}))
+    assert k._read_token(token) is None

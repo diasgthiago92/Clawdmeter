@@ -43,8 +43,70 @@ KIRO_PROFILE_ARN = "arn:aws:codewhisperer:us-east-1:717564244052:profile/WXD3ADX
 CW_TARGET = "AmazonCodeWhispererService.GetUsageLimits"
 
 
+def _refresh_token(path: Path = KIRO_TOKEN) -> str | None:
+    """Refresh an expired SSO token via SSO-OIDC CreateToken and persist it.
+
+    Kiro's token cache (~/.aws/sso/cache/kiro-auth-token.json) carries a
+    refreshToken and a clientIdHash; the matching registration file in the same
+    folder holds the clientId/clientSecret. Without this, an expired token makes
+    the daemon fall back to the (often stale) IDE log — the Kiro figure then
+    freezes. Returns the new access token, or None on any failure.
+    """
+    import urllib.error
+    import urllib.request
+
+    try:
+        tok = json.loads(path.read_text())
+        refresh = tok.get("refreshToken")
+        client_hash = tok.get("clientIdHash")
+        if not refresh or not client_hash:
+            return None
+        reg = json.loads((path.parent / f"{client_hash}.json").read_text())
+        client_id, client_secret = reg.get("clientId"), reg.get("clientSecret")
+        if not client_id or not client_secret:
+            return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+    region = tok.get("region", "us-east-1")
+    body = json.dumps({
+        "clientId": client_id,
+        "clientSecret": client_secret,
+        "grantType": "refresh_token",
+        "refreshToken": refresh,
+    }).encode()
+    req = urllib.request.Request(f"https://oidc.{region}.amazonaws.com/token",
+                                 data=body, method="POST",
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            fresh = json.loads(resp.read())
+    except (urllib.error.URLError, ValueError, OSError):
+        return None
+
+    access = fresh.get("accessToken")
+    if not access:
+        return None
+    # Persist the rotated token so the next read is a cache hit; a failed write
+    # is non-fatal (we still return the fresh access token for this call).
+    try:
+        tok["accessToken"] = access
+        if fresh.get("refreshToken"):
+            tok["refreshToken"] = fresh["refreshToken"]
+        expires_in = int(fresh.get("expiresIn", 3600))
+        tok["expiresAt"] = (
+            datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(seconds=expires_in)
+        ).isoformat().replace("+00:00", "Z")
+        path.write_text(json.dumps(tok))
+    except (OSError, ValueError, TypeError):
+        pass
+    return access
+
+
 def _read_token(path: Path = KIRO_TOKEN) -> str | None:
-    """Fresh, unexpired bearer token from the IDE's SSO cache, or None."""
+    """Fresh, unexpired bearer token from the IDE's SSO cache, refreshing it via
+    SSO-OIDC when it has expired. Returns None only if there is no usable token."""
     try:
         tok = json.loads(path.read_text())
         access = tok.get("accessToken")
@@ -53,7 +115,7 @@ def _read_token(path: Path = KIRO_TOKEN) -> str | None:
             return None
         expires = datetime.datetime.fromisoformat(exp.replace("Z", "+00:00"))
         if expires <= datetime.datetime.now(datetime.timezone.utc):
-            return None   # expired; the caller falls back to the IDE log
+            return _refresh_token(path)   # expired → refresh instead of going stale
         return access
     except (OSError, ValueError, KeyError, TypeError):
         return None
