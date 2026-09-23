@@ -49,6 +49,24 @@ class CodexUsageTest(unittest.TestCase):
             self.assertEqual(CodexUsage([Path(tmp)]).get(1000),
                              {"cxd": [-1, -1, 0], "cxw": [-1, -1, 0]})
 
+    def test_null_limits_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "rollout-null-tail.jsonl"
+            # Event with valid rate limits followed by a later event with null rate limits (e.g. limit_id: premium)
+            path.write_text("\n".join([
+                event("2026-09-20T10:00:00Z",
+                      {"used_percent": 45, "window_minutes": 300, "resets_at": 2_000_000_000},
+                      {"used_percent": 15, "window_minutes": 10080, "resets_at": 2_000_100_000}),
+                json.dumps({"timestamp": "2026-09-20T10:05:00Z", "payload": {
+                    "type": "token_count", "rate_limits": {
+                        "limit_id": "premium", "primary": None, "secondary": None
+                    }}}),
+            ]) + "\n")
+            payload = CodexUsage([root]).get(2_000_000_000 - 3600)
+            self.assertEqual(payload["cxd"][0], 45)
+            self.assertEqual(payload["cxw"][0], 15)
+
     def test_tokens_per_window(self):
         def line(ts, total, primary_reset=1000 + 300 * 60, secondary_reset=1000 + 10080 * 60):
             return json.dumps({"timestamp": ts, "payload": {"type": "token_count",
