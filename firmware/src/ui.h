@@ -5,9 +5,10 @@
 enum screen_t {
     SCREEN_SPLASH,
     SCREEN_USAGE,
-    SCREEN_AGENDA,
-    SCREEN_HISTORY,
+    SCREEN_HISTORY,          // consumo 24h (barras empilhadas)
+    SCREEN_AGENDA,           // agenda de hoje
     SCREEN_ROUTINES,
+
     SCREEN_POSTS,            // cronograma de posts: Instagram e TikTok
     SCREEN_CRYPTO,
     SCREEN_STOCKS,
