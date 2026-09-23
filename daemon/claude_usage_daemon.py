@@ -424,22 +424,7 @@ def add_clock_fields(payload: dict) -> None:
     payload["tf"] = tf
 
 
-async def poll_api(token: str) -> dict | None:
-    headers = dict(API_HEADERS_TEMPLATE)
-    headers["Authorization"] = f"Bearer {token}"
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as http:
-            resp = await http.post(API_URL, headers=headers, json=API_BODY)
-    except httpx.HTTPError as e:
-        log(f"API call failed: {e}")
-        return None
-    if resp.status_code in (401, 403):
-        log(f"API HTTP {resp.status_code} (token expired/invalid)")
-        raise TokenExpired()
-    if resp.status_code >= 400:
-        log(f"API HTTP {resp.status_code}: {resp.text[:200]}")
-        return None
-
+def payload_from_ratelimit_headers(resp: httpx.Response, *, rate_limited: bool = False) -> dict:
     def hdr(name: str, default: str = "0") -> str:
         return resp.headers.get(name, default)
 
@@ -460,14 +445,26 @@ async def poll_api(token: str) -> dict | None:
             return 0
 
     # Pro/Max accounts expose 5h/7d windows; Enterprise/overage use a single
-    # spending-limit model reported via overage-utilization.
+    # spending-limit model reported via overage-utilization. A 429 can arrive
+    # with sparse headers; in that case the useful UI answer is still "current
+    # window is exhausted", not "no data".
     if resp.headers.get("anthropic-ratelimit-unified-5h-utilization"):
         payload = {
-            "s": pct(hdr("anthropic-ratelimit-unified-5h-utilization")),
+            "s": 100 if rate_limited else pct(hdr("anthropic-ratelimit-unified-5h-utilization")),
             "sr": reset_minutes(hdr("anthropic-ratelimit-unified-5h-reset")),
             "w": pct(hdr("anthropic-ratelimit-unified-7d-utilization")),
             "wr": reset_minutes(hdr("anthropic-ratelimit-unified-7d-reset")),
-            "st": hdr("anthropic-ratelimit-unified-5h-status", "unknown"),
+            "st": hdr("anthropic-ratelimit-unified-5h-status", "rate_limited" if rate_limited else "unknown"),
+            "acct": "pro",
+            "ok": True,
+        }
+    elif rate_limited:
+        payload = {
+            "s": 100,
+            "sr": 0,
+            "w": 0,
+            "wr": 0,
+            "st": "rate_limited",
             "acct": "pro",
             "ok": True,
         }
@@ -486,6 +483,27 @@ async def poll_api(token: str) -> dict | None:
     add_chime_field(payload)   # adds "c":1 iff the config opts in
     add_clock_fields(payload)   # adds "t" + "tf" iff the config opts in
     return payload
+
+
+async def poll_api(token: str) -> dict | None:
+    headers = dict(API_HEADERS_TEMPLATE)
+    headers["Authorization"] = f"Bearer {token}"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as http:
+            resp = await http.post(API_URL, headers=headers, json=API_BODY)
+    except httpx.HTTPError as e:
+        log(f"API call failed: {e}")
+        return None
+    if resp.status_code in (401, 403):
+        log(f"API HTTP {resp.status_code} (token expired/invalid)")
+        raise TokenExpired()
+    if resp.status_code == 429:
+        log(f"API HTTP 429 (rate limited): {resp.text[:200]}")
+        return payload_from_ratelimit_headers(resp, rate_limited=True)
+    if resp.status_code >= 400:
+        log(f"API HTTP {resp.status_code}: {resp.text[:200]}")
+        return None
+    return payload_from_ratelimit_headers(resp)
 
 
 def _billing_period_info(now: float, reset_ts: str) -> dict:
