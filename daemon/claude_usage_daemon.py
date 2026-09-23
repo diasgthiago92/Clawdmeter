@@ -760,12 +760,18 @@ class Session:
             ag_window = _ANTIGRAVITY.since(since)
             ag_today, ag_responses, ag_peak = _ANTIGRAVITY.today(now)
             extras.append({"ag": [ag_today, min(100, round(ag_today * 100 / ag_peak)) if ag_peak else 0, ag_responses]})
-        except OSError as e:
+        except Exception as e:
             log(f"Antigravity usage unavailable: {e}")
-        # Gemini - Weekly panel: weekly quota of the Gemini models group (agy /quota).
-        extras.append(await _AG_QUOTA.get(now))
-        # Codex rate limits: local JSONL session tails only (no network access).
-        extras.append(_CODEX_USAGE.get(now))
+        try:
+            # Gemini - Weekly panel: weekly quota of the Gemini models group (agy /quota).
+            extras.append(await _AG_QUOTA.get(now))
+        except Exception as e:
+            log(f"Antigravity quota unavailable: {e}")
+        try:
+            # Codex rate limits: local JSONL session tails only (no network access).
+            extras.append(_CODEX_USAGE.get(now))
+        except Exception as e:
+            log(f"Codex usage unavailable: {e}")
         try:
             config_dirs = read_config_dirs()
             claude_hourly = _MODEL_TALLY.hourly(config_dirs, now)
@@ -776,9 +782,13 @@ class Session:
             extras.append({"hb": encode_stacked(claude_hourly, kiro_hourly, ag_hourly, codex_hourly),
                            "tc": sum(claude_hourly), "tk": round(sum(kiro_hourly) * cpr, 1), "ta": sum(ag_hourly),
                            "tx": sum(codex_hourly)})
-        except OSError as e:
+        except Exception as e:
             log(f"Model tally failed: {e}")
-        extras.append(_KIRO.get(now))
+        try:
+            extras.append(_KIRO.get(now))
+        except Exception as e:
+            log(f"Kiro usage unavailable: {e}")
+
         if sys.platform == "darwin":
             try:
                 # Mouse / keyboard battery for the fixed corner on the device.
