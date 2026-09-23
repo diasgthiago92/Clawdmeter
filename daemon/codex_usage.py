@@ -14,7 +14,7 @@ from typing import Iterable
 
 REFRESH_S = 60
 MAX_FILES = 20
-TAIL_BYTES = 256 * 1024
+TAIL_BYTES = 512 * 1024
 WINDOW_PAYLOADS = {"primary": "cxd", "secondary": "cxw"}
 
 
@@ -42,7 +42,7 @@ def _tail_lines(path: Path, tail_bytes: int) -> list[bytes]:
 
 
 def _latest_event(paths: Iterable[Path], tail_bytes: int = TAIL_BYTES) -> dict | None:
-    newest: tuple[float, dict] | None = None
+    newest: dict[str, tuple[float, dict]] = {}
     for path in paths:
         try:
             lines = _tail_lines(path, tail_bytes)
@@ -60,9 +60,12 @@ def _latest_event(paths: Iterable[Path], tail_bytes: int = TAIL_BYTES) -> dict |
             stamp = _event_timestamp(event.get("timestamp"))
             if stamp is None or not isinstance(limits, dict):
                 continue
-            if newest is None or stamp > newest[0]:
-                newest = stamp, limits
-    return newest[1] if newest else None
+            for window in WINDOW_PAYLOADS:
+                w_limit = limits.get(window)
+                if isinstance(w_limit, dict) and "used_percent" in w_limit and "resets_at" in w_limit:
+                    if window not in newest or stamp > newest[window][0]:
+                        newest[window] = (stamp, w_limit)
+    return {w: item[1] for w, item in newest.items()} if newest else None
 
 
 def _file_totals(path: Path) -> list[tuple[float, int]]:

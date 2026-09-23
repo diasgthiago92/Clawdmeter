@@ -19,7 +19,8 @@ import tempfile
 from pathlib import Path
 
 CONVERSATIONS = Path.home() / ".gemini" / "antigravity-cli" / "conversations"
-RESPONSE_STEP = 15
+CONVERSATIONS_ALT = Path.home() / ".gemini" / "antigravity" / "conversations"
+RESPONSE_STEPS = (15, 23)
 _TOKEN_FIELDS = (2, 3, 5, 9)   # input, output, cached input, thinking
 
 
@@ -82,7 +83,7 @@ def read_conversation(db_path: Path) -> list[tuple[float, int]]:
                 shutil.copyfile(src, Path(tmp) / src.name)
         con = sqlite3.connect(copy)
         try:
-            rows = con.execute("SELECT metadata FROM steps WHERE step_type = ?", (RESPONSE_STEP,)).fetchall()
+            rows = con.execute("SELECT metadata FROM steps WHERE step_type IN (15, 23)").fetchall()
         except sqlite3.DatabaseError:
             rows = []
         finally:
@@ -93,30 +94,38 @@ def read_conversation(db_path: Path) -> list[tuple[float, int]]:
 class AntigravityUsage:
     """Caches each conversation by (mtime, wal mtime); re-reads only what changed."""
 
-    def __init__(self, conversations: Path = CONVERSATIONS) -> None:
-        self.conversations = conversations
+    def __init__(self, conversations: Path | list[Path] = None) -> None:
+        if conversations is None:
+            self.conversations_dirs = [CONVERSATIONS, CONVERSATIONS_ALT]
+        elif isinstance(conversations, Path):
+            self.conversations_dirs = [conversations]
+        else:
+            self.conversations_dirs = conversations
         self.cache: dict[Path, tuple[float, list[tuple[float, int]]]] = {}
 
     def responses(self, since: float) -> list[tuple[float, int]]:
         out = []
         seen = set()
-        for db in self.conversations.glob("*.db"):
-            try:
-                wal = db.with_name(db.name + "-wal")
-                mtime = max(db.stat().st_mtime, wal.stat().st_mtime if wal.exists() else 0)
-            except OSError:
+        for cdir in self.conversations_dirs:
+            if not cdir.exists():
                 continue
-            seen.add(db)
-            if mtime < since:
-                continue
-            cached = self.cache.get(db)
-            if not cached or cached[0] != mtime:
+            for db in cdir.glob("*.db"):
                 try:
-                    cached = (mtime, read_conversation(db))
-                except (OSError, sqlite3.Error):
+                    wal = db.with_name(db.name + "-wal")
+                    mtime = max(db.stat().st_mtime, wal.stat().st_mtime if wal.exists() else 0)
+                except OSError:
                     continue
-                self.cache[db] = cached
-            out.extend(r for r in cached[1] if r[0] >= since)
+                seen.add(db)
+                if mtime < since:
+                    continue
+                cached = self.cache.get(db)
+                if not cached or cached[0] != mtime:
+                    try:
+                        cached = (mtime, read_conversation(db))
+                    except (OSError, sqlite3.Error):
+                        continue
+                    self.cache[db] = cached
+                out.extend(r for r in cached[1] if r[0] >= since)
         self.cache = {p: c for p, c in self.cache.items() if p in seen}
         return out
 
