@@ -3,6 +3,7 @@
 #include <esp_heap_caps.h>
 #include <lvgl.h>
 #include <time.h>
+#include <Preferences.h>
 #include "logo.h"
 #include "clawd_still.h"
 #include "icons.h"
@@ -255,6 +256,13 @@ static long     clock_base_epoch = 0;
 static uint32_t clock_base_ms = 0;
 static int      clock_fmt = 24;   // 12 or 24, set from the daemon payload
 static int      clock_last_min = -1;   // last rendered minute; avoids redrawing the title every tick
+
+// Current local wall-clock epoch (seconds), extrapolated from the daemon's
+// last clock beat. Returns 0 when the daemon hasn't supplied a clock yet.
+static long ui_now_epoch(void) {
+    if (clock_base_epoch == 0) return 0;
+    return clock_base_epoch + (long)((lv_tick_get() - clock_base_ms) / 1000);
+}
 static lv_obj_t* usage_group;   // the two usage panels — shown when connected
 static lv_obj_t* pair_group;    // pairing hint — shown when disconnected
 static lv_obj_t* bar_session;
@@ -330,15 +338,15 @@ static uint32_t screen_shown_ms = 0;
 static uint32_t tap_ms = 0;
 static bool     tap_hold = false;
 // Holding a finger still on the center for 2 s pauses auto-rotation; another
-// 2 s hold resumes it, and so does 1 h of pause. Alerts (meeting, failed routine, live match) still show.
+// 2 s hold resumes it, and a pause left on resumes by itself after 1 h. Alerts
+// (meeting, live match) still show while paused.
 #define ROTATION_LOCK_HOLD_MS 2000
 #ifndef ROTATION_LOCK_MAX_MS
-#define ROTATION_LOCK_MAX_MS  3600000     // a pause left on for 1 h resumes by itself
+#define ROTATION_LOCK_MAX_MS  3600000     // 1 h: a pause left on resumes by itself
 #endif
 static bool       rotation_locked = false;
 static uint32_t   rotation_locked_ms = 0; // when the pause started
-static uint32_t   hold_start_ms = 0;      // 0 = no touch; UINT32_MAX = touch can't toggle
-static lv_point_t hold_point;
+static uint32_t   hold_start_ms = 0;      // 0 = finger not in center; else when it entered
 static bool       hold_toggled = false;   // this touch toggled the lock; its release isn't a tap
 static lv_obj_t*  lock_toast = nullptr;
 static uint32_t   lock_toast_ms = 0;
@@ -1839,147 +1847,6 @@ void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, b
     render_agenda();
 }
 
-// ---- Routine failure alert ----
-// A routine that just failed takes the screen: blinking red panel, its name and
-// time, and two buttons. "Rodar de novo" asks the daemon to kickstart its
-// LaunchAgent; "Dispensar" (or 10 minutes) lets rotation resume.
-#define ROUTINE_ALERT_MAX_MS (10 * 60 * 1000)
-#define ROUTINE_BLINK_MS     500
-static lv_obj_t* ralert_container;
-static lv_obj_t* ralert_panel;
-static lv_obj_t* lbl_ralert_name;
-static lv_obj_t* lbl_ralert_when;
-static lv_obj_t* lbl_ralert_status;
-static lv_obj_t* btn_ralert_rerun;
-static bool      ralert_active = false;
-static bool      ralert_rerunnable = false;
-static uint32_t  ralert_since = 0, ralert_blink_ms = 0, ralert_close_at = 0;
-static bool      ralert_blink_on = false;
-static char      ralert_name[28] = "";
-
-static void ralert_close(void);
-
-static void ralert_rerun_cb(lv_event_t* e) {
-    (void)e;
-    if (!ralert_active || !ralert_rerunnable) return;
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "{\"rr\":\"%s\"}", ralert_name);
-    ble_send_command(cmd);
-    lv_label_set_text(lbl_ralert_status, "Pedido enviado ao Mac...");
-    lv_obj_add_state(btn_ralert_rerun, LV_STATE_DISABLED);
-}
-
-static void ralert_dismiss_cb(lv_event_t* e) {
-    (void)e;
-    ralert_close();
-}
-
-static lv_obj_t* make_alert_button(lv_obj_t* parent, const char* text, lv_color_t bg, lv_event_cb_t cb) {
-    lv_obj_t* b = lv_button_create(parent);
-    lv_obj_set_style_bg_color(b, bg, 0);
-    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(b, 12, 0);
-    lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_set_style_pad_hor(b, 18, 0);
-    lv_obj_set_style_pad_ver(b, 12, 0);
-    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* l = lv_label_create(b);
-    lv_label_set_text(l, text);
-    lv_obj_set_style_text_font(l, L.reset_font, 0);
-    lv_obj_set_style_text_color(l, COL_TEXT, 0);
-    lv_obj_center(l);
-    return b;
-}
-
-static void init_routine_alert_screen(lv_obj_t* scr) {
-    ralert_container = make_screen_container(scr, "Rotina falhou");
-
-    const int panel_h = L.scr_h - L.content_y - L.margin;
-    ralert_panel = make_panel(ralert_container, L.margin, L.content_y, L.content_w, panel_h);
-    const int inner_w = L.content_w - 2 * L.panel_pad_x;
-
-    lbl_ralert_name = lv_label_create(ralert_panel);
-    lv_label_set_long_mode(lbl_ralert_name, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(lbl_ralert_name, inner_w);
-    lv_obj_set_style_text_font(lbl_ralert_name, L.pct_font, 0);
-    lv_obj_set_style_text_color(lbl_ralert_name, COL_TEXT, 0);
-    lv_obj_set_style_text_align(lbl_ralert_name, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(lbl_ralert_name, "");
-    lv_obj_align(lbl_ralert_name, LV_ALIGN_TOP_MID, 0, 6);
-
-    lbl_ralert_when = lv_label_create(ralert_panel);
-    lv_obj_set_style_text_font(lbl_ralert_when, L.reset_font, 0);
-    lv_obj_set_style_text_color(lbl_ralert_when, COL_TEXT, 0);
-    lv_label_set_text(lbl_ralert_when, "");
-    lv_obj_align(lbl_ralert_when, LV_ALIGN_TOP_MID, 0, lv_font_get_line_height(L.pct_font) + 12);
-
-    lbl_ralert_status = lv_label_create(ralert_panel);
-    lv_label_set_long_mode(lbl_ralert_status, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(lbl_ralert_status, inner_w);
-    lv_obj_set_style_text_font(lbl_ralert_status, L.axis_font, 0);
-    lv_obj_set_style_text_color(lbl_ralert_status, COL_TEXT, 0);
-    lv_obj_set_style_text_align(lbl_ralert_status, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(lbl_ralert_status, "leo-dias-news \xC2\xB7 Slack");
-    lv_obj_align(lbl_ralert_status, LV_ALIGN_CENTER, 0, 10);
-
-    btn_ralert_rerun = make_alert_button(ralert_panel, "Rodar de novo", COL_KIRO, ralert_rerun_cb);
-    lv_obj_align(btn_ralert_rerun, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    lv_obj_set_style_bg_color(btn_ralert_rerun, COL_BAR_BG, LV_STATE_DISABLED);
-    lv_obj_t* dismiss = make_alert_button(ralert_panel, "Dispensar", COL_BAR_BG, ralert_dismiss_cb);
-    lv_obj_align(dismiss, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-}
-
-static void ralert_open(const RoutineRow& row) {
-    if (!ralert_container) return;
-    strlcpy(ralert_name, row.name, sizeof(ralert_name));
-    ralert_rerunnable = row.rerunnable;
-    lv_label_set_text(lbl_ralert_name, row.name);
-    lv_label_set_text_fmt(lbl_ralert_when, "falhou às %s", row.time);
-    lv_label_set_text(lbl_ralert_status, row.rerunnable ? "leo-dias-news \xC2\xB7 Slack"
-                                                         : "Sem atalho para rodar de novo");
-    if (row.rerunnable) {
-        lv_obj_clear_flag(btn_ralert_rerun, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_state(btn_ralert_rerun, LV_STATE_DISABLED);
-    } else {
-        lv_obj_add_flag(btn_ralert_rerun, LV_OBJ_FLAG_HIDDEN);
-    }
-    ralert_since = ralert_blink_ms = lv_tick_get();
-    ralert_close_at = 0;
-    if (!ralert_active) {
-        ralert_active = true;
-        tap_hold = false;
-        ui_show_screen(SCREEN_ROUTINE_ALERT);
-    }
-}
-
-static void ralert_close(void) {
-    if (!ralert_active) return;
-    ralert_active = false;
-    lv_obj_set_style_bg_color(ralert_panel, COL_PANEL, 0);
-    if (current_screen == SCREEN_ROUTINE_ALERT) ui_show_screen(SCREEN_ROUTINES);
-}
-
-void ui_rerun_ack(const char* name, bool ok) {
-    if (!ralert_active || strcmp(name, ralert_name) != 0) return;
-    lv_label_set_text(lbl_ralert_status, ok ? "Rotina iniciada no Mac" : "O Mac recusou ou falhou ao iniciar");
-    if (ok) ralert_close_at = lv_tick_get() + 4000;
-    else    lv_obj_clear_state(btn_ralert_rerun, LV_STATE_DISABLED);
-}
-
-static void ralert_tick(void) {
-    if (!ralert_active) return;
-    const uint32_t now = lv_tick_get();
-    if (now - ralert_since > ROUTINE_ALERT_MAX_MS || (ralert_close_at && now >= ralert_close_at)) {
-        ralert_close();
-        return;
-    }
-    if (now - ralert_blink_ms >= ROUTINE_BLINK_MS) {
-        ralert_blink_ms = now;
-        ralert_blink_on = !ralert_blink_on;
-        lv_obj_set_style_bg_color(ralert_panel, ralert_blink_on ? COL_RED : lv_color_hex(0x5a1a14), 0);
-    }
-}
-
 // ---- Kiro routines (leo-dias-news) ----
 #define ROUTINE_NEW_MS (60 * 1000)   // a routine that just ran is highlighted this long
 static lv_obj_t*  routines_container;
@@ -2087,7 +1954,6 @@ void ui_update_routines(const RoutineRow* rows, int offset, int count, int total
                 break;
             }
         }
-        if (is_new && routines_loaded && !rows[i].ok) ralert_open(rows[i]);
         if (is_new && routines_loaded) {
             int slot = 0;
             for (int j = 1; j < ROUTINES_MAX; j++) if (routines_new_ms[j] < routines_new_ms[slot]) slot = j;
@@ -2254,6 +2120,24 @@ void ui_update_posts(const PostRow* rows, int offset, int count, int total) {
 }
 
 static bool live_is_active(void);
+
+// Small colored pill button used by alert screens (e.g. the meeting "Começar").
+static lv_obj_t* make_alert_button(lv_obj_t* parent, const char* text, lv_color_t bg, lv_event_cb_t cb) {
+    lv_obj_t* b = lv_button_create(parent);
+    lv_obj_set_style_bg_color(b, bg, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(b, 12, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_pad_hor(b, 18, 0);
+    lv_obj_set_style_pad_ver(b, 12, 0);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* l = lv_label_create(b);
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_font(l, L.reset_font, 0);
+    lv_obj_set_style_text_color(l, COL_TEXT, 0);
+    lv_obj_center(l);
+    return b;
+}
 
 // ---- Meeting alert (Google Agenda) ----
 // Five minutes before a meeting the screen takes over with a countdown, like the
@@ -2690,7 +2574,6 @@ void ui_init(void) {
     init_games_screen(scr);
     init_live_screen(scr);
     init_meeting_screen(scr);
-    init_routine_alert_screen(scr);
     splash_init(scr);
 
     if (splash_get_root()) {
@@ -2796,10 +2679,22 @@ void ui_update(const UsageData* data) {
     }
 
     int s_pct = (int)(data->session_pct + 0.5f);
+    char buf[48];
 
     if (usage_rows_layout) {
-        // Proposta B: the Claude row's mini-bars are already styled; enterprise
-        // spending mode isn't represented as a row. Keep the compact cells as-is.
+        // Proposta B: update Claude Daily/Weekly mini-bars + reset hints
+        lv_label_set_text_fmt(lbl_session_pct, "%d%%", s_pct);
+        lv_bar_set_value(bar_session, s_pct, LV_ANIM_ON);
+        set_usage_pct(UP_CLAUDE_DAY, s_pct);
+        format_reset_time(data->session_reset_mins, buf, sizeof(buf));
+        lv_label_set_text(hint_session, buf);
+
+        int w_pct = (int)(data->weekly_pct + 0.5f);
+        lv_label_set_text_fmt(lbl_weekly_pct, "%d%%", w_pct);
+        lv_bar_set_value(bar_weekly, w_pct, LV_ANIM_ON);
+        set_usage_pct(UP_CLAUDE_WEEK, w_pct);
+        format_reset_time(data->weekly_reset_mins, buf, sizeof(buf));
+        lv_label_set_text(hint_weekly, buf);
     } else if (data->enterprise) {
         // Spending box: big number-only label + small "%" symbol + desc + pace
         lv_obj_set_style_text_font(lbl_session_pct, L.ent_pct_font, 0);
@@ -2818,8 +2713,6 @@ void ui_update(const UsageData* data) {
         lv_obj_add_flag(lbl_spending_status, LV_OBJ_FLAG_HIDDEN);
         if (panel_weekly) lv_obj_clear_flag(panel_weekly, LV_OBJ_FLAG_HIDDEN);
     }
-
-    char buf[48];
 
     // Pace vars used in both enterprise blocks below
     const char* pace_text = "Abaixo do ritmo";
@@ -2967,23 +2860,27 @@ static void notice_tick(uint32_t now) {
 }
 
 // Holding a finger still on the middle of the screen for 2 s toggles the lock.
+// The gesture only needs the finger to stay inside a generous center circle for
+// ROTATION_LOCK_HOLD_MS; natural fingertip jitter is tolerated, and briefly
+// straying outside the circle just re-arms the timer instead of cancelling the
+// whole press.
 static void lock_hold_tick(lv_indev_t* indev, uint32_t now) {
     lv_point_t p = {0, 0};
     lv_indev_get_point(indev, &p);
-    if (hold_start_ms == 0) {                 // a new touch just started
-        hold_start_ms = now;
-        hold_point = p;
-        hold_toggled = false;
-    }
     if (hold_toggled) return;
-    const int cx = p.x - L.scr_w / 2, cy = p.y - L.scr_h / 2, r = L.scr_w / 4;
-    const int mx = p.x - hold_point.x, my = p.y - hold_point.y;
-    const bool alert = current_screen == SCREEN_MEETING || current_screen == SCREEN_ROUTINE_ALERT;
-    if (alert || cx * cx + cy * cy > r * r || mx * mx + my * my > 20 * 20) {
-        hold_start_ms = UINT32_MAX;           // moved or off-center: this touch can't toggle
+    const int cx = p.x - L.scr_w / 2, cy = p.y - L.scr_h / 2, r = L.scr_w / 3;
+    const bool alert = current_screen == SCREEN_MEETING;
+    // Off-center or on an alert screen: (re)start the timer so the count only
+    // runs while the finger is held in the center. Never dead-lock the press.
+    if (alert || cx * cx + cy * cy > r * r) {
+        hold_start_ms = now;
         return;
     }
-    if (hold_start_ms == UINT32_MAX || now - hold_start_ms < ROTATION_LOCK_HOLD_MS) return;
+    if (hold_start_ms == 0) {                 // just entered the center: start counting
+        hold_start_ms = now;
+        return;
+    }
+    if (now - hold_start_ms < ROTATION_LOCK_HOLD_MS) return;
     hold_toggled = true;
     rotation_locked = !rotation_locked;
     rotation_locked_ms = now;
@@ -3015,11 +2912,6 @@ static void rotation_tick(void) {
     // An imminent meeting takes precedence over everything, then a Vasco match.
     if (meeting_active) {
         if (current_screen != SCREEN_MEETING) ui_show_screen(SCREEN_MEETING);
-        return;
-    }
-    // A failed routine waits for "Rodar de novo" / "Dispensar".
-    if (ralert_active) {
-        if (current_screen != SCREEN_ROUTINE_ALERT) ui_show_screen(SCREEN_ROUTINE_ALERT);
         return;
     }
     // A Vasco match freezes rotation on the live score until it ends.
@@ -3079,7 +2971,6 @@ static void accent_tick(void) {
 void ui_tick_anim(void) {
     accent_tick();
     meeting_tick();
-    ralert_tick();
     live_tick();
     routines_tick();
     rotation_tick();
@@ -3163,8 +3054,7 @@ static void apply_battery_visibility(void) {
 static screen_t step_screen(screen_t from, int dir) {
     screen_t s = (screen_t)((from + dir + SCREEN_COUNT) % SCREEN_COUNT);
     for (int guard = 0; guard < 3; guard++) {   // skip alert screens that aren't active
-        if ((s == SCREEN_LIVE && !live_active) || (s == SCREEN_MEETING && !meeting_active) ||
-            (s == SCREEN_ROUTINE_ALERT && !ralert_active))
+        if ((s == SCREEN_LIVE && !live_active) || (s == SCREEN_MEETING && !meeting_active))
             s = (screen_t)((s + dir + SCREEN_COUNT) % SCREEN_COUNT);
     }
     return s;
@@ -3196,7 +3086,6 @@ void ui_show_screen(screen_t screen) {
     lv_obj_add_flag(agenda_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(live_container, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(meeting_container, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(ralert_container, LV_OBJ_FLAG_HIDDEN);
     splash_hide();
 
     switch (screen) {
@@ -3219,7 +3108,6 @@ void ui_show_screen(screen_t screen) {
     case SCREEN_VASCO:   lv_obj_clear_flag(games_container, LV_OBJ_FLAG_HIDDEN); scroll_list_show(&games_list); break;
     case SCREEN_LIVE:    lv_obj_clear_flag(live_container, LV_OBJ_FLAG_HIDDEN); break;
     case SCREEN_MEETING: lv_obj_clear_flag(meeting_container, LV_OBJ_FLAG_HIDDEN); break;
-    case SCREEN_ROUTINE_ALERT: lv_obj_clear_flag(ralert_container, LV_OBJ_FLAG_HIDDEN); break;
     default: break;
     }
 

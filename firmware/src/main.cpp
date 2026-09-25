@@ -242,10 +242,6 @@ static bool handle_extra_json(const char* json) {
         else            ui_update_kiro(k[0] | 0, k[1] | 0, k[2] | -1, k[3] | 0);
         return true;
     }
-    if (doc["rrk"].is<JsonArray>()) {         // rerun acknowledgement: [name, 1 started | 0 refused]
-        ui_rerun_ack(doc["rrk"][0] | "", (doc["rrk"][1] | 0) != 0);
-        return true;
-    }
     if (!doc["mt"].isNull()) {               // meeting alert: [title, "HH:MM", seconds, where, joinable] or 0
         JsonArray mt = doc["mt"].as<JsonArray>();
         if (mt.isNull()) ui_update_meeting(nullptr, "", 0, "", false);
