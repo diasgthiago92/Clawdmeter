@@ -22,6 +22,10 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
   último consumo bom guardado em `~/.config/claude-usage-monitor/last-usage.json` (`carried_usage`: contagens de reset
   envelhecidas, janela que já virou volta a 0%, validade de 7 dias) e continua mandando os extras. `{"ok":false}` só
   quando não há nada guardado.
+  **Renovação automática** (02/10/2026): no 401 o daemon chama a CLI (`renew_via_cli`: `claude -p` com Haiku, sem
+  ferramentas, sem hooks, sem salvar sessão; no máximo 1 tentativa a cada 15 min) e consulta de novo com o token que o
+  Claude Code deixar no Keychain. O daemon continua sem falar com o endpoint de OAuth. Custo: ~7 mil tokens de Haiku
+  por renovação (token dura 8 h). Se a renovação falhar, vale o reenvio do último consumo acima.
 - Testes: `pytest` não está no venv; instale num dir temporário e rode com `PYTHONPATH` os arquivos
   `daemon/tests/test_*.py` (menos os de Windows/Linux).
 

@@ -63,6 +63,11 @@ CONFIG_FILE = Path.home() / ".config" / "claude-usage-monitor" / "config"
 # restart while it is dead) doesn't blank the device.
 LAST_USAGE_FILE = Path.home() / ".config" / "claude-usage-monitor" / "last-usage.json"
 MAX_CARRY_S = 7 * 86400   # past the weekly window nothing we knew still holds
+# Dead token: have Claude Code renew it by running one minimal headless prompt.
+RENEW_MIN_GAP_S = 900     # at most one renewal attempt per config dir every 15 min
+RENEW_TIMEOUT_S = 90
+CLAUDE_CLI_FALLBACKS = ("/opt/homebrew/bin/claude", "/usr/local/bin/claude",
+                        str(Path.home() / ".local" / "bin" / "claude"))
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_HEADERS_TEMPLATE = {
@@ -80,9 +85,9 @@ API_BODY = {
 
 class TokenExpired(Exception):
     """Raised by poll_api on a 401/403 — the access token is dead. The daemon never
-    refreshes (pure free-ride: Claude Code owns refreshing), so the caller carries
-    the last known usage (see carried_usage) until the CLI re-seeds the token, and
-    only signals "No data" when there is nothing to carry."""
+    calls the OAuth endpoint itself (Claude Code owns refreshing); it asks the CLI
+    to renew (see renew_via_cli) and, if that fails, carries the last known usage
+    (see carried_usage). "No data" is signalled only when there is nothing to carry."""
 
 
 def log(msg: str) -> None:
@@ -490,6 +495,63 @@ def payload_from_ratelimit_headers(resp: httpx.Response, *, rate_limited: bool =
     return payload
 
 
+def _claude_cli() -> str | None:
+    found = shutil.which("claude")
+    if found:
+        return found
+    return next((c for c in CLAUDE_CLI_FALLBACKS if os.access(c, os.X_OK)), None)
+
+
+_last_renew_try: dict[Path, float] = {}
+
+
+async def renew_via_cli(config_dir: Path) -> bool:
+    """Get Claude Code to renew ``config_dir``'s expired token; True if the CLI ran clean.
+
+    Claude Code refreshes its own OAuth token whenever it starts with an expired
+    one, so a single tiny headless prompt (Haiku, no tools, no hooks, nothing
+    saved to disk) does the renewal with Claude Code's own rotation logic — the
+    daemon still never touches the OAuth endpoint. Throttled per config dir so a
+    logged-out account isn't retried every poll.
+    """
+    now = time.time()
+    if now - _last_renew_try.get(config_dir, 0.0) < RENEW_MIN_GAP_S:
+        return False
+    _last_renew_try[config_dir] = now
+    cli = _claude_cli()
+    if not cli:
+        log("Token expired and the claude CLI was not found; cannot renew")
+        return False
+    env = dict(os.environ)
+    if config_dir != DEFAULT_CONFIG_DIR:
+        env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+    log(f"Token in {config_dir} expired; asking Claude Code to renew it")
+    try:
+        # --setting-sources project + a neutral cwd: none of the user's hooks run.
+        proc = await asyncio.create_subprocess_exec(
+            cli, "-p", "Responda apenas: ok", "--model", "haiku",
+            "--no-session-persistence", "--setting-sources", "project", "--tools", "",
+            cwd=str(CONFIG_FILE.parent), env=env,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as e:
+        log(f"Token renewal could not start: {e}")
+        return False
+    try:
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=RENEW_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        log("Token renewal timed out")
+        return False
+    if proc.returncode != 0:
+        log(f"Token renewal failed (rc={proc.returncode}): {err.decode(errors='replace').strip()[:200]}")
+        return False
+    log("Claude Code ran; re-reading its token")
+    return True
+
+
 def save_last_usage(payload: dict, now: float, path: Path = LAST_USAGE_FILE) -> None:
     """Remember the last good Claude payload for carried_usage."""
     try:
@@ -658,8 +720,9 @@ async def poll_active(selector: PlanSelector = _SELECTOR) -> tuple[dict | None, 
     signal "No data". False when at least one token authenticated — including a
     transient non-auth poll failure worth retrying silently rather than idling.
 
-    Pure free-ride: a 401 (TokenExpired) means that dir's token has expired and
-    only Claude Code (its owner) can re-seed it — we never refresh it ourselves.
+    A 401 (TokenExpired) means that dir's token has expired and only Claude Code
+    (its owner) can re-seed it — we never refresh it ourselves, we ask the CLI to
+    (renew_via_cli) and poll once more with the token it leaves behind.
     """
     dirs = read_config_dirs()
     payloads: dict[Path, dict] = {}
@@ -671,7 +734,13 @@ async def poll_active(selector: PlanSelector = _SELECTOR) -> tuple[dict | None, 
             log(f"No token in {d}; skipping")
             continue
         try:
-            payload = await poll_api(token)
+            try:
+                payload = await poll_api(token)
+            except TokenExpired:
+                token = read_token_for(d) if await renew_via_cli(d) else None
+                if not token:
+                    raise
+                payload = await poll_api(token)
         except TokenExpired:
             log(f"Token in {d} expired/invalid; skipping")
             continue

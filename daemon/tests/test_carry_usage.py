@@ -118,3 +118,68 @@ def test_dead_token_with_nothing_to_carry_still_signals_no_data(tmp_path):
     writes, extras = _run_one_cycle(tmp_path, (None, True))
     assert writes == [{"ok": False}]
     assert not extras
+
+
+# --- renewal: a dead token is renewed by the claude CLI, then polled again ---
+
+def _poll_with(tmp_path, tokens, renew_ok, renew_calls):
+    """poll_active over one dir whose stored token moves through ``tokens``; only "NEW" is alive."""
+    stored = iter(tokens)
+
+    async def fake_poll_api(token):
+        if token != "NEW":
+            raise mod.TokenExpired()
+        return {"s": 7, "ok": True}
+
+    async def fake_renew(config_dir):
+        renew_calls.append(config_dir)
+        return renew_ok
+
+    with patch.object(mod, "read_config_dirs", return_value=[tmp_path]), \
+         patch.object(mod, "read_token_for", side_effect=lambda _d: next(stored)), \
+         patch.object(mod, "poll_api", new=fake_poll_api), \
+         patch.object(mod, "renew_via_cli", new=fake_renew):
+        return asyncio.run(mod.poll_active(mod.PlanSelector()))
+
+
+def test_expired_token_is_renewed_and_polled_again(tmp_path):
+    calls = []
+    payload, dead = _poll_with(tmp_path, ["OLD", "NEW"], True, calls)
+    assert (payload, dead) == ({"s": 7, "ok": True}, False)
+    assert calls == [tmp_path]
+
+
+def test_failed_renewal_reports_the_dir_dead(tmp_path):
+    calls = []
+    assert _poll_with(tmp_path, ["OLD"], False, calls) == (None, True)
+    assert calls == [tmp_path]
+
+
+def test_renewal_that_leaves_a_dead_token_reports_the_dir_dead(tmp_path):
+    assert _poll_with(tmp_path, ["OLD", "STILL-OLD"], True, []) == (None, True)
+
+
+def test_live_token_never_triggers_a_renewal(tmp_path):
+    calls = []
+    payload, _dead = _poll_with(tmp_path, ["NEW"], True, calls)
+    assert payload == {"s": 7, "ok": True} and calls == []
+
+
+def test_renewal_is_throttled_per_config_dir(tmp_path):
+    spawned = []
+
+    async def fake_exec(*args, **kwargs):
+        spawned.append(args)
+        proc = MagicMock(returncode=0)
+        proc.communicate = AsyncMock(return_value=(b"", b""))
+        return proc
+
+    async def go():
+        return [await mod.renew_via_cli(tmp_path), await mod.renew_via_cli(tmp_path)]
+
+    with patch.object(mod, "_last_renew_try", {}), \
+         patch.object(mod, "_claude_cli", return_value="/x/claude"), \
+         patch.object(mod.asyncio, "create_subprocess_exec", new=fake_exec):
+        assert asyncio.run(go()) == [True, False]
+    assert len(spawned) == 1
+    assert spawned[0][:2] == ("/x/claude", "-p")
