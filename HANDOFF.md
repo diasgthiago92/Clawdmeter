@@ -17,6 +17,11 @@ Leia primeiro as **Diretrizes do projeto** no topo do `CLAUDE.md` (valem sempre)
 ## Daemon (macOS)
 - launchd `com.user.claude-usage-daemon`. Reiniciar após mudar código:
   `launchctl kickstart -k gui/$(id -u)/com.user.claude-usage-daemon` · log `~/Library/Logs/claude-usage-daemon.out.log`
+- **Token do Claude vencido** (02/10/2026): o daemon não renova o token (quem renova é o Claude Code). Antes mandava
+  `{"ok":false}` e a tela Consumo Atual caía em "Escutando / Sem dados", parando também todos os extras. Agora reenvia o
+  último consumo bom guardado em `~/.config/claude-usage-monitor/last-usage.json` (`carried_usage`: contagens de reset
+  envelhecidas, janela que já virou volta a 0%, validade de 7 dias) e continua mandando os extras. `{"ok":false}` só
+  quando não há nada guardado.
 - Testes: `pytest` não está no venv; instale num dir temporário e rode com `PYTHONPATH` os arquivos
   `daemon/tests/test_*.py` (menos os de Windows/Linux).
 

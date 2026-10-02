@@ -59,6 +59,10 @@ KEYCHAIN_SERVICE = "Claude Code-credentials"
 DEFAULT_CONFIG_DIR = Path.home() / ".claude"
 SAVED_ADDR_FILE = Path.home() / ".config" / "claude-usage-monitor" / "ble-address"
 CONFIG_FILE = Path.home() / ".config" / "claude-usage-monitor" / "config"
+# Last good Claude usage payload, kept on disk so a dead token (or a daemon
+# restart while it is dead) doesn't blank the device.
+LAST_USAGE_FILE = Path.home() / ".config" / "claude-usage-monitor" / "last-usage.json"
+MAX_CARRY_S = 7 * 86400   # past the weekly window nothing we knew still holds
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_HEADERS_TEMPLATE = {
@@ -76,8 +80,9 @@ API_BODY = {
 
 class TokenExpired(Exception):
     """Raised by poll_api on a 401/403 — the access token is dead. The daemon never
-    refreshes (pure free-ride: Claude Code owns refreshing), so the caller just
-    signals "No data" to the device until the CLI re-seeds the token."""
+    refreshes (pure free-ride: Claude Code owns refreshing), so the caller carries
+    the last known usage (see carried_usage) until the CLI re-seeds the token, and
+    only signals "No data" when there is nothing to carry."""
 
 
 def log(msg: str) -> None:
@@ -482,6 +487,53 @@ def payload_from_ratelimit_headers(resp: httpx.Response, *, rate_limited: bool =
         }
     add_chime_field(payload)   # adds "c":1 iff the config opts in
     add_clock_fields(payload)   # adds "t" + "tf" iff the config opts in
+    return payload
+
+
+def save_last_usage(payload: dict, now: float, path: Path = LAST_USAGE_FILE) -> None:
+    """Remember the last good Claude payload for carried_usage."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"at": now, "payload": payload}))
+    except OSError as e:
+        log(f"Could not save last usage: {e}")
+
+
+def carried_usage(now: float, path: Path = LAST_USAGE_FILE) -> dict | None:
+    """The last good Claude payload aged to ``now``, or None when there is none.
+
+    Used while the token is dead: an expired token means Claude Code isn't
+    running on this Mac, so the last numbers still hold — only the reset
+    countdowns move, and a window whose reset has passed is back to 0%. Sending
+    this instead of {"ok": false} keeps Consumo Atual (and with it the Kiro,
+    Gemini and Codex panels and every other screen's data) on the device.
+    """
+    try:
+        saved = json.loads(path.read_text())
+        at = float(saved["at"])
+        payload = dict(saved["payload"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    age = now - at
+    if not payload.get("ok") or age < 0 or age > MAX_CARRY_S:
+        return None
+    elapsed = int(age // 60)
+    windows = (("s", "sr"), ("w", "wr")) if payload.get("acct") == "pro" else ()
+    for pct_key, reset_key in windows:
+        reset = payload.get(reset_key)
+        if not isinstance(reset, int) or reset <= 0:
+            continue                      # reset time unknown: leave the window alone
+        if reset > elapsed:
+            payload[reset_key] = reset - elapsed
+        else:
+            payload[pct_key] = 0          # the window reset while the token was dead
+            payload[reset_key] = 0
+            if pct_key == "s":
+                payload["st"] = "allowed"
+    for key in ("c", "t", "tf"):          # chime / clock are per-send, not usage
+        payload.pop(key, None)
+    add_chime_field(payload)
+    add_clock_fields(payload)
     return payload
 
 
@@ -953,9 +1005,16 @@ async def connect_and_run(target, stop_event: asyncio.Event) -> bool:
                 # refresh them ourselves. Claude Code (the token's owner) does all
                 # refreshing; refreshing here would race its rotation and feed the
                 # OAuth endpoint's rate limit (429). When no dir has a usable token
-                # we signal "No data" so the device idles instead of holding stale
-                # numbers until the CLI re-seeds it.
+                # we carry the last known usage (aged) so the device keeps its
+                # screens until the CLI re-seeds it.
                 payload, dead = await poll_active()
+                if payload is not None:
+                    save_last_usage(payload, time.time())
+                elif dead:
+                    payload = carried_usage(time.time())
+                    if payload is not None:
+                        log("No usable token; carrying the last Claude usage so the "
+                            "device keeps its screens — use the CLI to let Claude Code renew it")
                 if payload is not None:
                     if await session.write_payload(payload):
                         last_poll = time.time()
@@ -963,7 +1022,7 @@ async def connect_and_run(target, stop_event: asyncio.Event) -> bool:
                         await session.write_extras(payload)
                 elif dead:
                     # No live token in any config dir (missing, or a 401/expired
-                    # token) -> show "No data" now instead of stale numbers. Guard
+                    # token) and no earlier usage to carry -> show "No data". Guard
                     # last_poll on the write result (like the data path) so a
                     # failed beat retries next tick instead of throttling what may
                     # be a healthy link for a full POLL_INTERVAL.
