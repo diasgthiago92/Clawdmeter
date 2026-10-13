@@ -60,7 +60,7 @@ struct LiveMatch {
     char competition[20];
 };
 
-// Today's Kiro routines, as announced by the rotinas bot in Slack.
+// Today's Kiro routines, as announced by a bot in Slack.
 #define ROUTINES_MAX 24
 struct RoutineRow {
     char name[28];           // UTF-8, up to 22 characters

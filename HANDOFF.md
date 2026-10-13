@@ -42,7 +42,7 @@ Telas de alerta que travam a rotação: **Reunião** (5 min antes, contagem; bot
 - Claude: API de uso + transcripts (`usage_extras.py`). Gemini = Antigravity CLI (`antigravity_usage.py`, bancos
   em `~/.gemini/antigravity-cli/conversations`, formato reverso-engenheirado).
 - Kiro: créditos do mês nos logs do Kiro IDE (real); 24h/5h = requisições do kiro-cli × crédito médio (estimado)
-  (`kiro_usage.py`). Rotinas: Slack #rotinas-news (`kiro_routines.py`, rerun só via lista fixa + launchctl).
+  (`kiro_usage.py`). Rotinas: canal do Slack definido em `~/.config/claude-usage-monitor/kiro.json` (`kiro_routines.py`, rerun só via lista fixa + launchctl).
 - A tela **Últimas Ações** (commits das IAs, `ai_actions.py`) foi retirada em 17/09/2026 a pedido do usuário.
 - Cronograma (`posts_schedule.py`, payload `{"p": [[rede, "DD/MM HHh", título, estado]]}`, rede 0 Instagram/1 TikTok, estado 0 agendado/1 enviado/2 não enviado): lê o projeto `~/.claude/projetos/eaiproduto` só para leitura, reaproveitando `dashboard.cronograma(agora, dias_atras)` (só hoje e amanhã, sem stories; a tela só redesenha quando o conteúdo muda). TikTok = reels; "enviado" vem do log `logs/<slot>.log` (`TikTok: rascunho enviado`) ou do `enviado_em` de `content/tiktok-fila.json`. Logos em `firmware/src/social_icons.h`, gerados por `tools/make_social_icons.py` (ImageMagick).
 - Agenda: Google Calendar read-only (`google_agenda.py`, login em `google_calendar_login.py`).

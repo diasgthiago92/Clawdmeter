@@ -39,7 +39,22 @@ DEFAULT_CREDITS_PER_REQUEST = 0.16
 # stays fresh even when the IDE is closed (we only use kiro-cli). Auth comes
 # from the IDE's SSO token cache, which kiro-cli/Kiro refresh on their own.
 KIRO_TOKEN = Path.home() / ".aws" / "sso" / "cache" / "kiro-auth-token.json"
-KIRO_PROFILE_ARN = "arn:aws:codewhisperer:us-east-1:000000000000:profile/EXAMPLE"
+# Values that belong to one person's setup (Kiro profile ARN, Slack channel)
+# stay out of the repo, in ~/.config/claude-usage-monitor/kiro.json:
+#   {"profile_arn": "arn:aws:codewhisperer:...", "slack_channel": "C...",
+#    "known": [["regex", "Routine name"]]}
+LOCAL_CONFIG = Path.home() / ".config" / "claude-usage-monitor" / "kiro.json"
+
+
+def local_config(path: Path = LOCAL_CONFIG) -> dict:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+KIRO_PROFILE_ARN = local_config().get("profile_arn", "")
 CW_TARGET = "AmazonCodeWhispererService.GetUsageLimits"
 
 
@@ -139,7 +154,7 @@ def live_credit_usage(token_path: Path = KIRO_TOKEN, arn: str = KIRO_PROFILE_ARN
     import urllib.error
     import urllib.request
 
-    access = _read_token(token_path)
+    access = _read_token(token_path) if arn else None
     if not access:
         return None
     try:

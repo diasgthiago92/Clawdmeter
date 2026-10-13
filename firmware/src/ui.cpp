@@ -1847,7 +1847,7 @@ void ui_update_agenda(const AgendaRow* rows, int offset, int count, int total, b
     render_agenda();
 }
 
-// ---- Kiro routines (rotinas-news) ----
+// ---- Kiro routines (Slack) ----
 #define ROUTINE_NEW_MS (60 * 1000)   // a routine that just ran is highlighted this long
 static lv_obj_t*  routines_container;
 static lv_obj_t*  routines_cols[4];
@@ -1899,7 +1899,7 @@ static void init_routines_screen(lv_obj_t* scr) {
     lbl_routines_empty = make_dim_label(panel, L.reset_font, "Buscando rotinas...");
     lv_obj_align(lbl_routines_empty, LV_ALIGN_CENTER, 0, 0);
 
-    lv_obj_t* note = make_dim_label(panel, L.axis_font, "rotinas-news \xC2\xB7 Slack");
+    lv_obj_t* note = make_dim_label(panel, L.axis_font, "Slack");
     lv_obj_align(note, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 }
 

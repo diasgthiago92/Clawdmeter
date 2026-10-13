@@ -1,7 +1,8 @@
-"""Today's Kiro routines, as announced by the rotinas bot in Slack.
+"""Today's Kiro routines, as announced by a bot in Slack.
 
-Every routine in ~/.kiro/rotinas posts its outcome to #rotinas-news through
-the bot token in ~/.kiro/.env. We read that channel (read-only) and turn the
+Every routine in ~/.kiro/rotinas posts its outcome to one Slack channel through
+the bot token in ~/.kiro/.env. We read that channel (read-only; its ID is
+"slack_channel" in ~/.config/claude-usage-monitor/kiro.json) and turn the
 day's messages into one row per routine:
 
     {"r": [[name, "HH:MM" of the latest run, 1 ok | 0 failed, runs today, 1 rerunnable], ...],
@@ -27,10 +28,11 @@ from pathlib import Path
 
 import httpx
 
+from kiro_usage import local_config
 from market_quotes import chunk_table
 
 KIRO_ENV = Path.home() / ".kiro" / ".env"
-CHANNEL_ID = "C0000000000"   # rotinas-news
+CHANNEL_ID = local_config().get("slack_channel", "")
 HISTORY_URL = "https://slack.com/api/conversations.history"
 ROUTINES_MAX = 24   # the device scrolls when they don't fit
 ROUTINES_REFRESH_S = 60
@@ -80,6 +82,21 @@ _KNOWN = (
     (re.compile(r"backup \.kiro", re.I), "Backup Drive"),
     (re.compile(r"consumo mensal", re.I), "Consumo mensal"),
 )
+
+
+def _known_extra(config: dict) -> tuple:
+    """Extra (pattern, name) pairs from the "known" list of the local config."""
+    pairs = []
+    for item in config.get("known") or []:
+        try:
+            pattern, name = item
+            pairs.append((re.compile(pattern, re.I), str(name)))
+        except (TypeError, ValueError, re.error):
+            continue
+    return tuple(pairs)
+
+
+_KNOWN += _known_extra(local_config())
 _SHORT = {
     "Organização de e-mails": "Organização e-mails",
 }
@@ -194,7 +211,7 @@ class KiroRoutines:
             return self.payloads
         self.fetched_at = now
         token = load_token(self.env_path)
-        if not token:
+        if not token or not CHANNEL_ID:
             return self.payloads
         midnight = datetime.datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0)
         messages: list[dict] = []
